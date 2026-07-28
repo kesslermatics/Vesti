@@ -74,9 +74,10 @@ export const api = {
     return handle(await fetch(`${BASE}/api/items`, { headers: authHeaders() }));
   },
 
-  async analyze(file) {
+  async analyze(file, hint = "") {
     const form = new FormData();
     form.append("file", file);
+    if (hint) form.append("hint", hint);
     return handle(
       await fetch(`${BASE}/api/analyze`, {
         method: "POST",

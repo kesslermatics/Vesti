@@ -1,6 +1,6 @@
 import base64
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy import select
@@ -113,6 +113,7 @@ def me(user: models.User = Depends(get_current_user)):
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(
     file: UploadFile = File(...),
+    hint: str = Form(default=""),
     user: models.User = Depends(get_current_user),
 ):
     contents = await file.read()
@@ -121,7 +122,7 @@ async def analyze(
 
     mime = file.content_type or "image/jpeg"
     try:
-        data = gemini_service.analyze_image(contents, file.filename or "upload.jpg")
+        data = gemini_service.analyze_image(contents, file.filename or "upload.jpg", hint=hint)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"KI-Analyse fehlgeschlagen: {exc}")
 
