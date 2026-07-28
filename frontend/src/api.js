@@ -69,6 +69,52 @@ export const api = {
     return handle(await fetch(`${BASE}/api/meta`));
   },
 
+  // ---- Profil ----
+  async getProfileFields() {
+    return handle(await fetch(`${BASE}/api/profile/fields`));
+  },
+
+  async updateProfile(payload) {
+    return handle(
+      await fetch(`${BASE}/api/profile`, {
+        method: "PUT",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  // ---- Shopping ----
+  async shoppingSuggest(payload) {
+    return handle(
+      await fetch(`${BASE}/api/shopping/suggest`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async fitCheck(payload) {
+    return handle(
+      await fetch(`${BASE}/api/shopping/fitcheck`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async updateQuantity(id, quantity) {
+    return handle(
+      await fetch(`${BASE}/api/items/${id}/quantity`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ quantity }),
+      })
+    );
+  },
+
   // ---- Items ----
   async listItems() {
     return handle(await fetch(`${BASE}/api/items`, { headers: authHeaders() }));

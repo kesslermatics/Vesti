@@ -16,14 +16,26 @@ from .auth import (
 from .categories import CATEGORIES, CATEGORY_GROUPS, MATERIALS, OCCASIONS, SEASONS, STYLES
 from .config import get_settings
 from .database import Base, engine, get_db
+from .migrations import run_migrations
+from .measurements import (
+    BODY_TYPES,
+    FIT_PREFERENCES,
+    MEASUREMENT_FIELDS,
+    SIZE_FIELDS,
+)
 from .schemas import (
     AnalyzeResponse,
+    FitCheckRequest,
+    FitCheckResponse,
     ItemCreate,
     ItemMetadata,
     ItemOut,
+    ProfileUpdate,
     RecommendedPiece,
     RecommendRequest,
     RecommendResponse,
+    ShoppingSuggestRequest,
+    ShoppingSuggestResponse,
     TokenResponse,
     UserCreate,
     UserLogin,
@@ -33,8 +45,9 @@ from .schemas import (
 settings = get_settings()
 
 Base.metadata.create_all(bind=engine)
+run_migrations(engine)
 
-app = FastAPI(title="Vesti API", version="2.0.0")
+app = FastAPI(title="Vesti API", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -107,6 +120,42 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 
 @app.get("/api/auth/me", response_model=UserOut)
 def me(user: models.User = Depends(get_current_user)):
+    return UserOut.model_validate(user)
+
+
+# ---------- Profil ----------
+@app.get("/api/profile/fields")
+def profile_fields():
+    """Liefert die Mess-Felder inkl. Anleitung und die Groessen-Felder."""
+    return {
+        "measurements": MEASUREMENT_FIELDS,
+        "sizes": SIZE_FIELDS,
+        "fit_preferences": FIT_PREFERENCES,
+        "body_types": BODY_TYPES,
+    }
+
+
+@app.put("/api/profile", response_model=UserOut)
+def update_profile(
+    payload: ProfileUpdate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    if payload.name is not None:
+        user.name = payload.name.strip()
+    if payload.measurements is not None:
+        user.measurements = payload.measurements
+    if payload.sizes is not None:
+        user.sizes = payload.sizes
+    if payload.fit_preference is not None:
+        user.fit_preference = payload.fit_preference
+    if payload.body_type is not None:
+        user.body_type = payload.body_type
+    if payload.style_notes is not None:
+        user.style_notes = payload.style_notes
+
+    db.commit()
+    db.refresh(user)
     return UserOut.model_validate(user)
 
 
@@ -208,6 +257,8 @@ def create_item(
         season=payload.season,
         description=payload.description,
         details=payload.details or {},
+        brand=payload.brand,
+        quantity=max(1, payload.quantity),
         image_data=image_bytes,
         image_mime=payload.image_mime or "image/jpeg",
     )
@@ -241,6 +292,28 @@ def get_item_image(
     if not item or not item.image_data:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
     return Response(content=item.image_data, media_type=item.image_mime)
+
+
+@app.patch("/api/items/{item_id}/quantity", response_model=ItemOut)
+def update_quantity(
+    item_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Stueckzahl eines Teils aendern."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+    try:
+        qty = int(payload.get("quantity", 1))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Ungueltige Stückzahl.")
+    item.quantity = max(1, min(999, qty))
+    db.commit()
+    db.refresh(item)
+    return _to_out(request, item)
 
 
 @app.delete("/api/items/{item_id}")
@@ -317,3 +390,94 @@ def recommend(
         )
 
     return RecommendResponse(pieces=pieces, explanation=result["explanation"])
+
+
+# ---------- Shopping ----------
+def _full_wardrobe(db: Session, user_id: int) -> list[dict]:
+    """Komplette Garderobe eines Nutzers inkl. Details und Stueckzahl."""
+    items = db.scalars(
+        select(models.ClothingItem).where(models.ClothingItem.user_id == user_id)
+    ).all()
+    return [
+        {
+            "id": it.id,
+            "name": it.name,
+            "category": it.category,
+            "color": it.color,
+            "material": it.material,
+            "pattern": it.pattern,
+            "style": it.style,
+            "occasion": it.occasion,
+            "season": it.season,
+            "brand": it.brand,
+            "quantity": it.quantity,
+            "details": it.details or {},
+        }
+        for it in items
+    ]
+
+
+def _profile_dict(user: models.User) -> dict:
+    return {
+        "measurements": user.measurements or {},
+        "sizes": user.sizes or {},
+        "fit_preference": user.fit_preference,
+        "body_type": user.body_type,
+        "style_notes": user.style_notes,
+    }
+
+
+@app.post("/api/shopping/suggest", response_model=ShoppingSuggestResponse)
+def shopping_suggest(
+    payload: ShoppingSuggestRequest,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Schlaegt sinnvolle Ergaenzungen zur Garderobe vor (chatfaehig)."""
+    wardrobe = _full_wardrobe(db, user.id)
+    history = [{"role": m.role, "content": m.content} for m in payload.history]
+
+    try:
+        result = gemini_service.shopping_suggestions(
+            wardrobe=wardrobe,
+            profile=_profile_dict(user),
+            direction=payload.direction,
+            history=history,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Vorschläge fehlgeschlagen: {exc}")
+
+    return ShoppingSuggestResponse(**result)
+
+
+@app.post("/api/shopping/fitcheck", response_model=FitCheckResponse)
+def shopping_fitcheck(
+    payload: FitCheckRequest,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Prueft ein Produkt aus einem Online-Shop gegen Garderobe und Profil."""
+    if not payload.product_text.strip():
+        raise HTTPException(status_code=400, detail="Bitte eine Produktbeschreibung angeben.")
+
+    image_bytes = None
+    if payload.image_base64:
+        try:
+            image_bytes = base64.b64decode(payload.image_base64)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
+
+    wardrobe = _full_wardrobe(db, user.id)
+
+    try:
+        result = gemini_service.fit_check(
+            product_text=payload.product_text,
+            wardrobe=wardrobe,
+            profile=_profile_dict(user),
+            image_bytes=image_bytes,
+            image_mime=payload.image_mime or "image/jpeg",
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fit-Check fehlgeschlagen: {exc}")
+
+    return FitCheckResponse(**result)

@@ -265,3 +265,204 @@ Antworte AUSSCHLIESSLICH mit folgendem JSON (kein Markdown):
         "item_ids": item_ids,
         "explanation": str(data.get("explanation", "")),
     }
+
+
+def _profile_block(profile: dict[str, Any]) -> str:
+    """Formatiert die Profil-Daten des Nutzers fuer den Prompt."""
+    if not profile:
+        return "(keine Profildaten hinterlegt)"
+
+    lines = []
+    m = profile.get("measurements") or {}
+    s = profile.get("sizes") or {}
+
+    if m:
+        maße = ", ".join(f"{k}: {v} cm" for k, v in m.items() if v)
+        if maße:
+            lines.append(f"Körpermaße: {maße}")
+    if s:
+        größen = ", ".join(f"{k.replace('size_', '')}: {v}" for k, v in s.items() if v)
+        if größen:
+            lines.append(f"Konfektionsgrößen: {größen}")
+    if profile.get("body_type"):
+        lines.append(f"Körpertyp: {profile['body_type']}")
+    if profile.get("fit_preference"):
+        lines.append(f"Bevorzugte Passform: {profile['fit_preference']}")
+    if profile.get("style_notes"):
+        lines.append(f"Stil-Notizen: {profile['style_notes']}")
+
+    return "\n".join(lines) if lines else "(keine Profildaten hinterlegt)"
+
+
+def _wardrobe_block(wardrobe: list[dict[str, Any]]) -> str:
+    """Formatiert die komplette Garderobe inkl. Details und Stueckzahl."""
+    if not wardrobe:
+        return "(Garderobe ist leer)"
+
+    # Nach Kategorie gruppieren, damit die KI Mengenverhaeltnisse erkennt
+    by_cat: dict[str, list[dict[str, Any]]] = {}
+    for it in wardrobe:
+        by_cat.setdefault(it["category"], []).append(it)
+
+    lines = []
+    for cat, items in by_cat.items():
+        total = sum(int(i.get("quantity") or 1) for i in items)
+        lines.append(f"\n{cat} ({total} Stück):")
+        for it in items:
+            qty = int(it.get("quantity") or 1)
+            qty_txt = f" ×{qty}" if qty > 1 else ""
+            parts = [
+                it.get("name") or cat,
+                it.get("color", ""),
+                it.get("material", ""),
+                it.get("pattern", ""),
+                it.get("style", ""),
+            ]
+            desc = ", ".join(p for p in parts if p)
+            if it.get("brand"):
+                desc += f", Marke: {it['brand']}"
+            details = it.get("details") or {}
+            if details:
+                det = ", ".join(f"{k}: {v}" for k, v in details.items() if v)
+                if det:
+                    desc += f" [{det}]"
+            lines.append(f"  - ID {it['id']}{qty_txt}: {desc}")
+
+    return "\n".join(lines)
+
+
+def shopping_suggestions(
+    wardrobe: list[dict[str, Any]],
+    profile: dict[str, Any],
+    direction: str,
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Schlaegt sinnvolle Ergaenzungen zur Garderobe vor."""
+    history_block = ""
+    if history:
+        turns = []
+        for msg in history[-8:]:  # nur die letzten Runden mitschicken
+            role = "Nutzer" if msg.get("role") == "user" else "Du"
+            turns.append(f"{role}: {msg.get('content', '')}")
+        history_block = "\n\nBisheriger Verlauf:\n" + "\n".join(turns)
+
+    prompt = f"""Du bist ein erfahrener Personal Shopper und Stilberater.
+
+Profil des Nutzers:
+{_profile_block(profile)}
+
+Aktuelle Garderobe (mit Stückzahlen):
+{_wardrobe_block(wardrobe)}
+
+Wunsch / Richtung des Nutzers: {direction or 'keine besondere Vorgabe'}{history_block}
+
+Analysiere die Garderobe: Was fehlt? Wo gibt es Lücken? Wovon hat der Nutzer schon zu viel?
+Achte auf die Stückzahlen – wenn jemand acht schwarze T-Shirts hat, braucht er kein neuntes.
+Schlage genau 5 konkrete Kleidungsstücke vor, die die Garderobe sinnvoll ergänzen.
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "intro": "1-2 Sätze auf Deutsch: was dir an der Garderobe auffällt",
+  "suggestions": [
+    {{
+      "title": "konkreter Vorschlag, z.B. 'Beige Chino, regular fit'",
+      "category": "einer aus: {', '.join(CATEGORIES[:30])}...",
+      "color": "empfohlene Farbe",
+      "material": "empfohlenes Material",
+      "reason": "2-3 Sätze auf Deutsch: warum genau das fehlt und was es ermöglicht",
+      "combines_with": ["Namen vorhandener Teile aus der Garderobe, die dazu passen"]
+    }}
+  ]
+}}"""
+
+    response = _call_with_retry(model=settings.gemini_model, contents=[prompt])
+    data = _extract_json(response.text or "{}")
+
+    raw = data.get("suggestions", [])
+    suggestions = []
+    for s in raw[:5]:
+        if not isinstance(s, dict):
+            continue
+        combines = s.get("combines_with", [])
+        suggestions.append(
+            {
+                "title": str(s.get("title", "")),
+                "category": str(s.get("category", "")),
+                "color": str(s.get("color", "")),
+                "material": str(s.get("material", "")),
+                "reason": str(s.get("reason", "")),
+                "combines_with": [str(c) for c in combines] if isinstance(combines, list) else [],
+            }
+        )
+
+    return {"intro": str(data.get("intro", "")), "suggestions": suggestions}
+
+
+def fit_check(
+    product_text: str,
+    wardrobe: list[dict[str, Any]],
+    profile: dict[str, Any],
+    image_bytes: bytes | None = None,
+    image_mime: str = "image/jpeg",
+) -> dict[str, Any]:
+    """Prueft ein Produkt aus einem Online-Shop gegen Garderobe und Profil."""
+    prompt = f"""Du bist ein kritischer Personal Shopper. Der Nutzer überlegt, dieses Produkt zu kaufen.
+
+Produktbeschreibung aus dem Shop:
+\"\"\"
+{product_text.strip()}
+\"\"\"
+
+Profil des Nutzers:
+{_profile_block(profile)}
+
+Aktuelle Garderobe (mit Stückzahlen):
+{_wardrobe_block(wardrobe)}
+
+Bewerte, wie gut dieses Produkt zur bestehenden Garderobe und zum Nutzer passt.
+Berücksichtige dabei:
+- Passt es farblich und stilistisch zu vorhandenen Teilen?
+- Hat der Nutzer schon etwas Ähnliches (Stückzahlen beachten)?
+- Material und Qualität: ist das sinnvoll für seine Garderobe?
+- Größe: passt die angegebene Größe zu seinen Körpermaßen? Fällt das Teil groß oder klein aus?
+- Schließt es eine echte Lücke oder ist es ein Duplikat?
+
+Sei ehrlich und kritisch. Wenn es nicht passt, sag das klar.
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "score": Zahl von 0 bis 100 (wie gut es passt),
+  "verdict": "kurzes Urteil in einem Satz, z.B. 'Sinnvolle Ergänzung' oder 'Hast du schon ähnlich'",
+  "explanation": "ausführliche deutsche Begründung (4-6 Sätze), gehe konkret auf Material, Farbe, Stil und Kombinierbarkeit ein",
+  "pros": ["kurze Pluspunkte"],
+  "cons": ["kurze Minuspunkte"],
+  "size_advice": "Empfehlung zur Größe basierend auf den Körpermaßen, oder leer wenn keine Maße vorhanden",
+  "combines_with": ["Namen vorhandener Teile, mit denen es gut kombinierbar ist"]
+}}"""
+
+    contents: list[Any] = []
+    if image_bytes:
+        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
+    contents.append(prompt)
+
+    response = _call_with_retry(model=settings.gemini_model, contents=contents)
+    data = _extract_json(response.text or "{}")
+
+    try:
+        score = max(0, min(100, int(float(data.get("score", 0)))))
+    except (ValueError, TypeError):
+        score = 0
+
+    def _str_list(key: str) -> list[str]:
+        val = data.get(key, [])
+        return [str(x) for x in val] if isinstance(val, list) else []
+
+    return {
+        "score": score,
+        "verdict": str(data.get("verdict", "")),
+        "explanation": str(data.get("explanation", "")),
+        "pros": _str_list("pros"),
+        "cons": _str_list("cons"),
+        "size_advice": str(data.get("size_advice", "")),
+        "combines_with": _str_list("combines_with"),
+    }

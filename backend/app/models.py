@@ -19,6 +19,15 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
+    # Profil: Koerpermasse (z.B. {"height": 178, "chest": 98})
+    measurements: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Profil: Konfektionsgroessen (z.B. {"size_top": "M", "size_shoe": "43"})
+    sizes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Profil: Vorlieben
+    fit_preference: Mapped[str] = mapped_column(String(60), default="")
+    body_type: Mapped[str] = mapped_column(String(60), default="")
+    style_notes: Mapped[str] = mapped_column(Text, default="")
+
     items: Mapped[list["ClothingItem"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
@@ -44,6 +53,11 @@ class ClothingItem(Base):
 
     # Kategorienspezifische Details (z.B. {"schnitt": "slim", "waschung": "dark"})
     details: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    # Wie viele Exemplare dieses Teils der Nutzer besitzt
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Marke (optional, hilft der KI)
+    brand: Mapped[str] = mapped_column(String(120), default="")
 
     # Bild direkt in der DB gespeichert
     image_data: Mapped[bytes] = mapped_column(LargeBinary)

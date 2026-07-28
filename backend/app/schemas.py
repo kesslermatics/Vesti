@@ -22,6 +22,22 @@ class UserOut(BaseModel):
     email: EmailStr
     name: str
     created_at: datetime
+    measurements: dict = {}
+    sizes: dict = {}
+    fit_preference: str = ""
+    body_type: str = ""
+    style_notes: str = ""
+
+
+class ProfileUpdate(BaseModel):
+    """Profil-Aktualisierung (alle Felder optional)."""
+
+    name: str | None = None
+    measurements: dict | None = None
+    sizes: dict | None = None
+    fit_preference: str | None = None
+    body_type: str | None = None
+    style_notes: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -43,6 +59,8 @@ class ItemMetadata(BaseModel):
     occasion: str = ""
     season: str = ""
     description: str = ""
+    brand: str = ""
+    quantity: int = 1
 
 
 class AnalyzeResponse(BaseModel):
@@ -84,3 +102,48 @@ class RecommendedPiece(BaseModel):
 class RecommendResponse(BaseModel):
     pieces: list[RecommendedPiece]
     explanation: str
+
+
+# ---------- Shopping ----------
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class ShoppingSuggestRequest(BaseModel):
+    """Vorschlaege fuer sinnvolle Ergaenzungen der Garderobe."""
+
+    direction: str = ""              # Freitext: Richtung/Anlass
+    history: list[ChatMessage] = []  # bisheriger Chat-Verlauf
+
+
+class ShoppingSuggestion(BaseModel):
+    title: str
+    category: str
+    reason: str
+    color: str = ""
+    material: str = ""
+    combines_with: list[str] = []
+
+
+class ShoppingSuggestResponse(BaseModel):
+    suggestions: list[ShoppingSuggestion]
+    intro: str = ""
+
+
+class FitCheckRequest(BaseModel):
+    """Produktbeschreibung von einem Shop pruefen."""
+
+    product_text: str
+    image_base64: str = ""
+    image_mime: str = ""
+
+
+class FitCheckResponse(BaseModel):
+    score: int                      # 0-100 Prozent
+    verdict: str                    # kurzes Urteil
+    explanation: str                # ausfuehrliche Begruendung
+    pros: list[str] = []
+    cons: list[str] = []
+    size_advice: str = ""
+    combines_with: list[str] = []

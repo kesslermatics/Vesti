@@ -4,14 +4,29 @@ import { api } from "../api";
 import Modal from "./Modal";
 import { SelectField, TextField } from "./Field";
 
-export default function ItemDetail({ item, meta, onClose, onDeleted }) {
+export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }) {
   const [occasion, setOccasion] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [qtyBusy, setQtyBusy] = useState(false);
 
   const open = Boolean(item);
+
+  async function changeQty(delta) {
+    const next = Math.max(1, (item.quantity || 1) + delta);
+    if (next === (item.quantity || 1)) return;
+    setQtyBusy(true);
+    try {
+      const updated = await api.updateQuantity(item.id, next);
+      onUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || "Stückzahl konnte nicht geändert werden.");
+    } finally {
+      setQtyBusy(false);
+    }
+  }
 
   async function getRecommendation() {
     setLoading(true);
@@ -64,8 +79,8 @@ export default function ItemDetail({ item, meta, onClose, onDeleted }) {
             className="w-full aspect-[4/3] object-cover rounded-2xl mb-4"
           />
 
-          <div className="flex flex-wrap gap-2 mb-5">
-            {[item.category, item.color, item.style, item.material, item.season]
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[item.category, item.color, item.style, item.material, item.season, item.brand]
               .filter(Boolean)
               .map((tag, i) => (
                 <span key={i} className="text-xs bg-sand-100 text-ink-700 rounded-full px-3 py-1">
@@ -73,6 +88,58 @@ export default function ItemDetail({ item, meta, onClose, onDeleted }) {
                 </span>
               ))}
           </div>
+
+          {/* Stückzahl */}
+          <div className="flex items-center justify-between bg-sand-100 rounded-2xl px-4 py-3 mb-4">
+            <div>
+              <span className="text-sm font-medium text-ink-900">Stückzahl</span>
+              <p className="text-xs text-ink-700/50">
+                Wie viele davon besitzt du?
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => changeQty(-1)}
+                disabled={qtyBusy || (item.quantity || 1) <= 1}
+                aria-label="Weniger"
+                className="w-8 h-8 rounded-full bg-white text-ink-800 shadow-sm text-lg leading-none disabled:opacity-40 hover:bg-sand-50 transition"
+              >
+                −
+              </button>
+              <span className="w-8 text-center font-semibold text-ink-900">
+                {item.quantity || 1}
+              </span>
+              <button
+                onClick={() => changeQty(1)}
+                disabled={qtyBusy}
+                aria-label="Mehr"
+                className="w-8 h-8 rounded-full bg-white text-ink-800 shadow-sm text-lg leading-none disabled:opacity-40 hover:bg-sand-50 transition"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Spezifische Details */}
+          {item.details && Object.keys(item.details).length > 0 && (
+            <div className="mb-5">
+              <h3 className="text-xs font-semibold text-ink-700/70 uppercase tracking-wide mb-2">
+                Details
+              </h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {Object.entries(item.details)
+                  .filter(([, v]) => v)
+                  .map(([k, v]) => (
+                    <div key={k} className="text-sm">
+                      <span className="text-ink-700/50 capitalize">
+                        {k.replace(/_/g, " ")}:{" "}
+                      </span>
+                      <span className="text-ink-900">{v}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
 
           {!result && (
             <div className="space-y-3">

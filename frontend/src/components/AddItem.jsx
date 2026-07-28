@@ -80,6 +80,8 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
         season: detail.season,
         description: detail.description,
         details: detail.details || {},
+        brand: "",
+        quantity: 1,
       });
       setStep(STEP.CONFIRM);
     } catch (err) {
@@ -285,6 +287,19 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
               <div className="col-span-2">
                 <SelectField label="Jahreszeit" value={metadata.season} onChange={(v) => update("season", v)} options={meta.seasons} />
               </div>
+              <TextField label="Marke" value={metadata.brand} onChange={(v) => update("brand", v)} placeholder="z.B. Uniqlo" />
+              <label className="block">
+                <span className="text-xs font-medium text-ink-700/70 uppercase tracking-wide">
+                  Stückzahl
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  value={metadata.quantity ?? 1}
+                  onChange={(e) => update("quantity", Math.max(1, Number(e.target.value) || 1))}
+                  className="mt-1 w-full rounded-xl border border-sand-200 bg-white px-3 py-2.5 text-ink-900 focus:border-clay-500 focus:ring-2 focus:ring-clay-500/20 outline-none transition"
+                />
+              </label>
               <div className="col-span-2">
                 <TextField label="Beschreibung" value={metadata.description} onChange={(v) => update("description", v)} />
               </div>
