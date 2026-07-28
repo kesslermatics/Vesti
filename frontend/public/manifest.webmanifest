@@ -1,0 +1,23 @@
+{
+  "name": "Vesti – Deine digitale Garderobe",
+  "short_name": "Vesti",
+  "description": "Digitaler Zwilling deiner Garderobe mit KI-Outfit-Vorschlägen.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f5",
+  "theme_color": "#b9734f",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.svg",
+      "sizes": "180x180",
+      "type": "image/svg+xml"
+    }
+  ]
+}
