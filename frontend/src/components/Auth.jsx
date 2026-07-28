@@ -63,6 +63,8 @@ export default function Auth({ onAuth }) {
             {isRegister && (
               <input
                 type="text"
+                name="name"
+                autoComplete="name"
                 placeholder="Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -71,7 +73,10 @@ export default function Auth({ onAuth }) {
             )}
             <input
               type="email"
+              name="email"
               required
+              autoComplete="email"
+              inputMode="email"
               placeholder="E-Mail"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -79,7 +84,9 @@ export default function Auth({ onAuth }) {
             />
             <input
               type="password"
+              name="password"
               required
+              autoComplete={isRegister ? "new-password" : "current-password"}
               placeholder="Passwort"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
