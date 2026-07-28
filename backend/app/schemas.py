@@ -101,6 +101,8 @@ class RecommendedPiece(BaseModel):
 
 class RecommendResponse(BaseModel):
     pieces: list[RecommendedPiece]
+    suitability: str = "geht"          # "perfekt" | "geht" | "notlösung" | "ungeeignet"
+    suitability_reason: str = ""
     explanation: str
 
 

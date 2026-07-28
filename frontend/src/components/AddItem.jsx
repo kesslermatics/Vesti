@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "../api";
 import Modal from "./Modal";
 import { SelectField, TextField, GroupedSelectField } from "./Field";
+import BrandField from "./BrandField";
 
 const STEP = {
   UPLOAD: "upload",
@@ -22,7 +23,14 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
   const [metadata, setMetadata] = useState(null);
   const [image, setImage] = useState({ base64: "", mime: "" });
   const [error, setError] = useState("");
+  const [brands, setBrands] = useState({ mine: [], suggestions: [] });
   const fileRef = useRef(null);
+
+  // Markenvorschläge laden, sobald das Modal geöffnet wird
+  useEffect(() => {
+    if (!open) return;
+    api.getBrands().then(setBrands).catch(() => {});
+  }, [open]);
 
   function reset() {
     setStep(STEP.UPLOAD);
@@ -287,7 +295,12 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
               <div className="col-span-2">
                 <SelectField label="Jahreszeit" value={metadata.season} onChange={(v) => update("season", v)} options={meta.seasons} />
               </div>
-              <TextField label="Marke" value={metadata.brand} onChange={(v) => update("brand", v)} placeholder="z.B. Uniqlo" />
+              <BrandField
+                value={metadata.brand}
+                onChange={(v) => update("brand", v)}
+                mine={brands.mine}
+                suggestions={brands.suggestions}
+              />
               <label className="block">
                 <span className="text-xs font-medium text-ink-700/70 uppercase tracking-wide">
                   Stückzahl

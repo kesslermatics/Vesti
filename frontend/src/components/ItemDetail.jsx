@@ -182,6 +182,31 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
 
           {result && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+              {/* Tauglichkeits-Urteil */}
+              {(() => {
+                const cfg = {
+                  perfekt:    { bg: "bg-emerald-50",  text: "text-emerald-700", border: "border-emerald-200", icon: "✓" },
+                  geht:       { bg: "bg-sand-100",    text: "text-ink-700",     border: "border-sand-200",    icon: "~" },
+                  notlösung:  { bg: "bg-amber-50",    text: "text-amber-700",   border: "border-amber-200",   icon: "⚠" },
+                  ungeeignet: { bg: "bg-clay-500/10", text: "text-clay-700",    border: "border-clay-200",    icon: "✕" },
+                }[result.suitability] || cfg.geht;
+                return (
+                  <div className={`rounded-2xl border ${cfg.bg} ${cfg.border} px-4 py-3 flex gap-3 items-start`}>
+                    <span className={`text-lg font-bold ${cfg.text} shrink-0`}>{cfg.icon}</span>
+                    <div>
+                      <p className={`text-sm font-semibold capitalize ${cfg.text}`}>
+                        {result.suitability}
+                      </p>
+                      {result.suitability_reason && (
+                        <p className={`text-sm mt-0.5 ${cfg.text} opacity-80`}>
+                          {result.suitability_reason}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <h3 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
                 Dein Outfit
               </h3>

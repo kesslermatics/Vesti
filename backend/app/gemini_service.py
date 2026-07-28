@@ -213,7 +213,7 @@ def recommend_outfit(
     occasion: str,
     note: str,
 ) -> dict[str, Any]:
-    """Empfiehlt passende Teile aus der Garderobe zu einem Basis-Teil."""
+    """Empfiehlt passende Teile aus der Garderobe und urteilt ehrlich, ob das Outfit taugt."""
     wardrobe_lines = []
     for it in wardrobe:
         wardrobe_lines.append(
@@ -229,23 +229,27 @@ def recommend_outfit(
         f"Stil: {base_item.get('style', '?')})"
     )
 
-    prompt = f"""Du bist ein professioneller Stylist. Der Nutzer moechte ein Outfit rund um dieses Basis-Kleidungsstueck:
-{base_text}
+    prompt = f"""Du bist ein ehrlicher, direkter Stilberater. Der Nutzer möchte ein Outfit für folgenden Anlass zusammenstellen.
 
+Basis-Teil: {base_text}
 Anlass: {occasion or 'nicht angegeben'}
-Zusatzwunsch des Nutzers: {note or 'keiner'}
+Zusatzwunsch: {note or 'keiner'}
 
-Verfuegbare Kleidungsstuecke in der Garderobe (nur diese IDs duerfen verwendet werden):
+Verfügbare Teile in der Garderobe:
 {wardrobe_text}
 
-Stelle ein stimmiges Outfit zusammen. Waehle ausschliesslich passende IDs aus der Garderobe
-(das Basis-Teil ID {base_item['id']} ist automatisch Teil des Outfits, muss nicht erneut genannt werden).
-Achte auf Farbharmonie, Stil und Anlass.
+WICHTIG: Sei ehrlich. Wenn das Basis-Teil oder die verfügbaren Kombinationen für den Anlass
+nicht wirklich geeignet sind, sag das klar – und erkläre trotzdem, wie man das Beste daraus macht.
+Beispiel: Ein schwarzes T-Shirt ist für eine Hochzeit eigentlich zu casual, aber mit den richtigen
+Teilen (schwarze Anzughose, Blazer) kann man es notfalls retten – das sollt du dann sagen.
 
-Antworte AUSSCHLIESSLICH mit folgendem JSON (kein Markdown):
+Wähle die am besten passenden IDs aus der Garderobe (Basis-Teil nicht nochmal nennen).
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
   "item_ids": [Liste der empfohlenen IDs als Zahlen],
-  "explanation": "eine ansprechende deutsche Beschreibung (2-4 Saetze), warum das Outfit zusammenpasst und wie es aesthetisch wirkt"
+  "suitability": "perfekt" | "geht" | "notlösung" | "ungeeignet",
+  "suitability_reason": "ein ehrlicher Satz: warum das Outfit für den Anlass (nicht) passt",
+  "explanation": "2-4 Sätze auf Deutsch: wie das Outfit wirkt, was gut passt, was fehlt oder stört, und welchen Tipp du für diesen Anlass noch hast"
 }}"""
 
     response = _call_with_retry(
@@ -261,8 +265,15 @@ Antworte AUSSCHLIESSLICH mit folgendem JSON (kein Markdown):
             item_ids.append(int(x))
         except (ValueError, TypeError):
             continue
+
+    suitability = str(data.get("suitability", "geht"))
+    if suitability not in {"perfekt", "geht", "notlösung", "ungeeignet"}:
+        suitability = "geht"
+
     return {
         "item_ids": item_ids,
+        "suitability": suitability,
+        "suitability_reason": str(data.get("suitability_reason", "")),
         "explanation": str(data.get("explanation", "")),
     }
 

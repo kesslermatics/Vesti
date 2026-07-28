@@ -69,6 +69,11 @@ export const api = {
     return handle(await fetch(`${BASE}/api/meta`));
   },
 
+  // ---- Marken ----
+  async getBrands() {
+    return handle(await fetch(`${BASE}/api/brands`, { headers: authHeaders() }));
+  },
+
   // ---- Profil ----
   async getProfileFields() {
     return handle(await fetch(`${BASE}/api/profile/fields`));

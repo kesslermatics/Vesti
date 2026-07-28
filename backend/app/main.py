@@ -3,7 +3,7 @@ import base64
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import gemini_service, models
@@ -13,6 +13,7 @@ from .auth import (
     hash_password,
     verify_password,
 )
+from .brands import KNOWN_BRANDS, canonicalize, normalize_key
 from .categories import CATEGORIES, CATEGORY_GROUPS, MATERIALS, OCCASIONS, SEASONS, STYLES
 from .config import get_settings
 from .database import Base, engine, get_db
@@ -121,6 +122,33 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @app.get("/api/auth/me", response_model=UserOut)
 def me(user: models.User = Depends(get_current_user)):
     return UserOut.model_validate(user)
+
+
+# ---------- Marken ----------
+def _user_brands(db: Session, user_id: int) -> list[str]:
+    """Alle Marken, die der Nutzer bereits verwendet, nach Haeufigkeit sortiert."""
+    rows = db.execute(
+        select(models.ClothingItem.brand, func.count(models.ClothingItem.id))
+        .where(
+            models.ClothingItem.user_id == user_id,
+            models.ClothingItem.brand != "",
+        )
+        .group_by(models.ClothingItem.brand)
+        .order_by(func.count(models.ClothingItem.id).desc())
+    ).all()
+    return [r[0] for r in rows]
+
+
+@app.get("/api/brands")
+def brands(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Marken des Nutzers (zuerst) plus bekannte Marken als Vorschlaege."""
+    mine = _user_brands(db, user.id)
+    mine_keys = {normalize_key(b) for b in mine}
+    suggestions = [b for b in KNOWN_BRANDS if normalize_key(b) not in mine_keys]
+    return {"mine": mine, "suggestions": suggestions}
 
 
 # ---------- Profil ----------
@@ -245,6 +273,9 @@ def create_item(
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
 
+    # Marke gegen bereits verwendete Schreibweisen normalisieren
+    brand = canonicalize(payload.brand, _user_brands(db, user.id)) if payload.brand else ""
+
     item = models.ClothingItem(
         user_id=user.id,
         name=payload.name,
@@ -257,7 +288,7 @@ def create_item(
         season=payload.season,
         description=payload.description,
         details=payload.details or {},
-        brand=payload.brand,
+        brand=brand,
         quantity=max(1, payload.quantity),
         image_data=image_bytes,
         image_mime=payload.image_mime or "image/jpeg",
@@ -389,7 +420,12 @@ def recommend(
             )
         )
 
-    return RecommendResponse(pieces=pieces, explanation=result["explanation"])
+    return RecommendResponse(
+        pieces=pieces,
+        suitability=result.get("suitability", "geht"),
+        suitability_reason=result.get("suitability_reason", ""),
+        explanation=result["explanation"],
+    )
 
 
 # ---------- Shopping ----------
