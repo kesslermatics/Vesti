@@ -1,0 +1,233 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { api, auth } from "./api";
+import AddItem from "./components/AddItem";
+import ItemDetail from "./components/ItemDetail";
+import Auth from "./components/Auth";
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [booting, setBooting] = useState(true);
+  const [meta, setMeta] = useState(null);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [error, setError] = useState("");
+
+  // Beim Start: Token pruefen und Nutzer laden
+  useEffect(() => {
+    (async () => {
+      if (!auth.token) {
+        setBooting(false);
+        return;
+      }
+      try {
+        const me = await api.me();
+        setUser(me);
+      } catch {
+        auth.clear();
+      } finally {
+        setBooting(false);
+      }
+    })();
+  }, []);
+
+  // Bei 401 irgendwo -> ausloggen
+  useEffect(() => {
+    const handler = () => setUser(null);
+    window.addEventListener("vesti-unauthorized", handler);
+    return () => window.removeEventListener("vesti-unauthorized", handler);
+  }, []);
+
+  // Daten laden sobald eingeloggt
+  useEffect(() => {
+    if (!user) return;
+    setLoading(true);
+    (async () => {
+      try {
+        const [m, list] = await Promise.all([api.getMeta(), api.listItems()]);
+        setMeta(m);
+        setItems(list);
+      } catch (err) {
+        setError(err.message || "Verbindung zum Server fehlgeschlagen.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [user]);
+
+  const logout = useCallback(() => {
+    auth.clear();
+    setUser(null);
+    setItems([]);
+    setSelected(null);
+  }, []);
+
+  // Nach Kategorie gruppieren, in der Reihenfolge der Meta-Kategorien
+  const grouped = useMemo(() => {
+    if (!meta) return [];
+    const map = new Map();
+    for (const it of items) {
+      if (!map.has(it.category)) map.set(it.category, []);
+      map.get(it.category).push(it);
+    }
+    const order = meta.categories;
+    const sortedKeys = [...map.keys()].sort(
+      (a, b) => order.indexOf(a) - order.indexOf(b)
+    );
+    return sortedKeys.map((cat) => ({ category: cat, items: map.get(cat) }));
+  }, [items, meta]);
+
+  function handleCreated(item) {
+    setItems((prev) => [item, ...prev]);
+  }
+
+  function handleDeleted(id) {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    setSelected(null);
+  }
+
+  // Boot-Splash
+  if (booting) {
+    return (
+      <div className="min-h-full flex items-center justify-center">
+        <motion.span
+          className="inline-block w-6 h-6 border-2 border-clay-500 border-t-transparent rounded-full"
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+        />
+      </div>
+    );
+  }
+
+  // Nicht eingeloggt -> Auth-Screen
+  if (!user) {
+    return <Auth onAuth={setUser} />;
+  }
+
+  return (
+    <div className="min-h-full pb-28">
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-sand-50/80 backdrop-blur-md border-b border-sand-100">
+        <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-ink-900">Vesti</h1>
+            <p className="text-xs text-ink-700/60">
+              {user.name ? `Hallo, ${user.name}` : "Deine digitale Garderobe"}
+            </p>
+          </div>
+          <button
+            onClick={logout}
+            className="text-xs font-medium text-ink-700/60 hover:text-clay-600 border border-sand-200 rounded-full px-3 py-1.5 transition"
+          >
+            Abmelden
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-5 pt-6">
+        {error && (
+          <div className="rounded-xl bg-clay-500/10 text-clay-600 text-sm px-4 py-3 mb-4">
+            {error}
+          </div>
+        )}
+
+        {loading && (
+          <div className="flex justify-center py-20 text-ink-700/50">
+            <motion.span
+              className="inline-block w-6 h-6 border-2 border-clay-500 border-t-transparent rounded-full"
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+            />
+          </div>
+        )}
+
+        {!loading && items.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-20"
+          >
+            <div className="text-5xl mb-4">🧥</div>
+            <h2 className="text-lg font-semibold text-ink-900">Deine Garderobe ist noch leer</h2>
+            <p className="text-sm text-ink-700/60 mt-1 max-w-xs mx-auto">
+              Füge dein erstes Kleidungsstück hinzu – ein Foto genügt, den Rest erledigt die KI.
+            </p>
+          </motion.div>
+        )}
+
+        <div className="space-y-8">
+          {grouped.map((group) => (
+            <section key={group.category}>
+              <div className="flex items-center gap-3 mb-3">
+                <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
+                  {group.category}
+                </h2>
+                <span className="text-xs text-ink-700/40">{group.items.length}</span>
+                <div className="flex-1 h-px bg-sand-100" />
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <AnimatePresence>
+                  {group.items.map((item) => (
+                    <motion.button
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setSelected(item)}
+                      className="group text-left"
+                    >
+                      <div className="aspect-square rounded-2xl overflow-hidden bg-white shadow-soft">
+                        <img
+                          src={item.image_url}
+                          alt={item.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                      </div>
+                      <span className="mt-1.5 block text-sm text-ink-800 truncate">
+                        {item.name || item.category}
+                      </span>
+                      {item.color && (
+                        <span className="block text-xs text-ink-700/50 truncate">{item.color}</span>
+                      )}
+                    </motion.button>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </section>
+          ))}
+        </div>
+      </main>
+
+      {/* Floating Add-Button */}
+      <motion.button
+        onClick={() => setAddOpen(true)}
+        whileTap={{ scale: 0.92 }}
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-clay-500 text-white rounded-full shadow-soft px-6 py-3.5 font-medium flex items-center gap-2 hover:bg-clay-600 transition"
+      >
+        <span className="text-xl leading-none">+</span> Teil hinzufügen
+      </motion.button>
+
+      {meta && (
+        <AddItem
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          meta={meta}
+          onCreated={handleCreated}
+        />
+      )}
+
+      {meta && (
+        <ItemDetail
+          item={selected}
+          meta={meta}
+          onClose={() => setSelected(null)}
+          onDeleted={handleDeleted}
+        />
+      )}
+    </div>
+  );
+}

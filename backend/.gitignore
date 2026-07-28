@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+vesti.db
+.venv/
+venv/
