@@ -288,6 +288,30 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
               <div className="col-span-2">
                 <TextField label="Beschreibung" value={metadata.description} onChange={(v) => update("description", v)} />
               </div>
+
+              {/* Kategorienspezifische Detail-Felder */}
+              {metadata.details && Object.keys(metadata.details).length > 0 && (
+                <div className="col-span-2 pt-3 border-t border-sand-200">
+                  <p className="text-xs font-medium text-ink-700/70 uppercase tracking-wide mb-3">
+                    Spezifische Details
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {Object.entries(metadata.details).map(([key, value]) => (
+                      <TextField
+                        key={key}
+                        label={key.replace(/_/g, ' ')}
+                        value={value || ""}
+                        onChange={(v) => {
+                          setMetadata((m) => ({
+                            ...m,
+                            details: { ...m.details, [key]: v },
+                          }));
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <button
               onClick={save}
