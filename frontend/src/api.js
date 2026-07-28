@@ -1,5 +1,5 @@
-// Zentrale API-Anbindung. In Produktion via VITE_API_URL auf die Railway-Backend-URL setzen.
-const BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
+// Backend-URL (Railway). Direkt im Code, damit kein .env noetig ist.
+const BASE = "https://backend-production-66df.up.railway.app";
 
 const TOKEN_KEY = "vesti_token";
 
