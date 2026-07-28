@@ -6,11 +6,18 @@ import ItemDetail from "./components/ItemDetail";
 import Auth from "./components/Auth";
 import Profile from "./components/Profile";
 import Shopping from "./components/Shopping";
+import Analytics from "./components/Analytics";
 
-const TAB = { WARDROBE: "wardrobe", SHOPPING: "shopping", PROFILE: "profile" };
+const TAB = {
+  WARDROBE: "wardrobe",
+  ANALYTICS: "analytics",
+  SHOPPING: "shopping",
+  PROFILE: "profile",
+};
 
 const TABS = [
   { id: TAB.WARDROBE, label: "Garderobe", icon: "🧥" },
+  { id: TAB.ANALYTICS, label: "Analyse", icon: "📊" },
   { id: TAB.SHOPPING, label: "Shopping", icon: "🛍️" },
   { id: TAB.PROFILE, label: "Profil", icon: "👤" },
 ];
@@ -254,6 +261,18 @@ export default function App() {
                   );
                 })}
               </div>
+            </motion.div>
+          )}
+
+          {/* ─────────── Analyse ─────────── */}
+          {tab === TAB.ANALYTICS && (
+            <motion.div
+              key="analytics"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+            >
+              <Analytics />
             </motion.div>
           )}
 

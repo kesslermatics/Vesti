@@ -477,3 +477,69 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
         "size_advice": str(data.get("size_advice", "")),
         "combines_with": _str_list("combines_with"),
     }
+
+
+def analyze_wardrobe(
+    wardrobe: list[dict[str, Any]],
+    profile: dict[str, Any],
+    stats: dict[str, Any],
+) -> dict[str, Any]:
+    """Erstellt eine ehrliche KI-Einschaetzung der gesamten Garderobe."""
+    def _top(key: str, n: int = 5) -> str:
+        entries = stats.get(key) or []
+        return ", ".join(f"{e['label']} ({e['count']})" for e in entries[:n]) or "–"
+
+    prompt = f"""Du bist ein erfahrener Stilberater und analysierst die Garderobe eines Nutzers.
+
+Profil:
+{_profile_block(profile)}
+
+Garderobe im Detail:
+{_wardrobe_block(wardrobe)}
+
+Berechnete Kennzahlen:
+- Einträge: {stats.get('total_entries')}, Teile insgesamt: {stats.get('total_pieces')}
+- Verteilung nach Outfit-Rolle: {_top('slots')}
+- Top-Kategorien: {_top('categories')}
+- Farben: {_top('colors')} (Anteil neutraler Farben: {stats.get('neutral_share')}%)
+- Materialien: {_top('materials')}
+- Stile: {_top('styles')}
+- Anlässe: {_top('occasions')}
+- Saison-Abdeckung: {_top('seasons', 4)}
+- Theoretische Outfit-Kombinationen: {stats.get('combinations')}
+
+Sei ehrlich und konkret. Keine Floskeln, keine Schmeicheleien.
+Wenn die Garderobe einseitig oder lückenhaft ist, sag das direkt.
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "headline": "ein prägnanter Satz, der die Garderobe charakterisiert",
+  "score": Zahl von 0 bis 100 – wie ausgewogen und vielseitig die Garderobe ist,
+  "summary": "3-5 Sätze auf Deutsch: ehrliche Gesamteinschätzung",
+  "strengths": ["2-4 konkrete Stärken"],
+  "weaknesses": ["2-4 konkrete Schwächen oder Lücken"],
+  "next_steps": ["2-4 konkrete nächste Anschaffungen oder Maßnahmen, priorisiert"],
+  "style_profile": "in 2-4 Worten der dominante Stil, z.B. 'minimalistisch casual'"
+}}"""
+
+    response = _call_with_retry(model=settings.gemini_model, contents=[prompt])
+    data = _extract_json(response.text or "{}")
+
+    try:
+        score = max(0, min(100, int(float(data.get("score", 0)))))
+    except (ValueError, TypeError):
+        score = 0
+
+    def _str_list(key: str) -> list[str]:
+        val = data.get(key, [])
+        return [str(x) for x in val] if isinstance(val, list) else []
+
+    return {
+        "headline": str(data.get("headline", "")),
+        "score": score,
+        "summary": str(data.get("summary", "")),
+        "strengths": _str_list("strengths"),
+        "weaknesses": _str_list("weaknesses"),
+        "next_steps": _str_list("next_steps"),
+        "style_profile": str(data.get("style_profile", "")),
+    }

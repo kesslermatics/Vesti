@@ -13,6 +13,7 @@ from .auth import (
     hash_password,
     verify_password,
 )
+from .analytics import compute_stats
 from .brands import KNOWN_BRANDS, canonicalize, normalize_key
 from .categories import CATEGORIES, CATEGORY_GROUPS, MATERIALS, OCCASIONS, SEASONS, STYLES
 from .config import get_settings
@@ -517,3 +518,59 @@ def shopping_fitcheck(
         raise HTTPException(status_code=502, detail=f"Fit-Check fehlgeschlagen: {exc}")
 
     return FitCheckResponse(**result)
+
+
+# ---------- Analyse ----------
+def _wardrobe_with_dates(db: Session, user_id: int) -> list[dict]:
+    """Garderobe inkl. created_at fuer die Statistik."""
+    items = db.scalars(
+        select(models.ClothingItem).where(models.ClothingItem.user_id == user_id)
+    ).all()
+    return [
+        {
+            "id": it.id,
+            "name": it.name,
+            "category": it.category,
+            "color": it.color,
+            "material": it.material,
+            "pattern": it.pattern,
+            "style": it.style,
+            "occasion": it.occasion,
+            "season": it.season,
+            "brand": it.brand,
+            "quantity": it.quantity,
+            "details": it.details or {},
+            "created_at": it.created_at,
+        }
+        for it in items
+    ]
+
+
+@app.get("/api/analytics/stats")
+def analytics_stats(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Rechnerische Statistiken – laedt sofort, ohne KI."""
+    return compute_stats(_wardrobe_with_dates(db, user.id))
+
+
+@app.post("/api/analytics/insights")
+def analytics_insights(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """KI-Einschaetzung der Garderobe (dauert einige Sekunden)."""
+    wardrobe = _wardrobe_with_dates(db, user.id)
+    if not wardrobe:
+        raise HTTPException(status_code=400, detail="Garderobe ist noch leer.")
+
+    stats = compute_stats(wardrobe)
+    try:
+        return gemini_service.analyze_wardrobe(
+            wardrobe=wardrobe,
+            profile=_profile_dict(user),
+            stats=stats,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
