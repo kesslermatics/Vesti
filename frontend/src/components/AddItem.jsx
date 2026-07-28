@@ -2,13 +2,14 @@ import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "../api";
 import Modal from "./Modal";
-import { SelectField, TextField } from "./Field";
+import { SelectField, TextField, GroupedSelectField } from "./Field";
 
 const STEP = {
-  UPLOAD: "upload",       // Foto auswählen
-  READY: "ready",         // Foto gewählt, Hinweis eingeben, Analyse-Button
-  ANALYZING: "analyzing", // KI läuft
-  CONFIRM: "confirm",     // Metadaten bestätigen
+  UPLOAD: "upload",
+  READY: "ready",
+  QUICK: "quick",         // Schritt 1: Kategorie & Farbe
+  DETAIL: "detail",       // Schritt 2: Details
+  CONFIRM: "confirm",
   SAVING: "saving",
 };
 
@@ -17,6 +18,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
   const [preview, setPreview] = useState(null);
   const [file, setFile] = useState(null);
   const [hint, setHint] = useState("");
+  const [quickResult, setQuickResult] = useState(null);
   const [metadata, setMetadata] = useState(null);
   const [image, setImage] = useState({ base64: "", mime: "" });
   const [error, setError] = useState("");
@@ -27,6 +29,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
     setPreview(null);
     setFile(null);
     setHint("");
+    setQuickResult(null);
     setMetadata(null);
     setImage({ base64: "", mime: "" });
     setError("");
@@ -44,18 +47,40 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
     setPreview(URL.createObjectURL(f));
     setFile(f);
     setStep(STEP.READY);
-    // Input zurücksetzen, damit dieselbe Datei nochmal wählbar ist
     e.target.value = "";
   }
 
   async function analyze() {
     if (!file) return;
     setError("");
-    setStep(STEP.ANALYZING);
+    
+    // Schritt 1: Quick
+    setStep(STEP.QUICK);
     try {
-      const res = await api.analyze(file, hint.trim());
-      setMetadata(res.metadata);
-      setImage({ base64: res.image_base64, mime: res.image_mime });
+      const quick = await api.analyzeQuick(file, hint.trim());
+      setQuickResult(quick);
+      setImage({ base64: quick.image_base64, mime: quick.image_mime });
+
+      // Schritt 2: Detail
+      setStep(STEP.DETAIL);
+      const detail = await api.analyzeDetail({
+        image_base64: quick.image_base64,
+        category: quick.category,
+        hint: hint.trim(),
+      });
+
+      setMetadata({
+        name: detail.name,
+        category: quick.category,
+        color: quick.color,
+        material: detail.material,
+        pattern: detail.pattern,
+        style: detail.style,
+        occasion: detail.occasion,
+        season: detail.season,
+        description: detail.description,
+        details: detail.details || {},
+      });
       setStep(STEP.CONFIRM);
     } catch (err) {
       const msg = err.message || "";
@@ -92,7 +117,6 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
   return (
     <Modal open={open} onClose={close}>
       <div className="p-5 sm:p-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-ink-900">Neues Teil hinzufügen</h2>
           <button onClick={close} className="text-ink-700/50 hover:text-ink-900 text-2xl leading-none">
@@ -106,19 +130,15 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
           </div>
         )}
 
-        {/* ── Schritt 1 & 2: Foto + Hinweis ── */}
-        {(step === STEP.UPLOAD || step === STEP.READY || step === STEP.ANALYZING) && (
+        {/* ── Upload & Hinweis ── */}
+        {(step === STEP.UPLOAD || step === STEP.READY) && (
           <div className="space-y-4">
-            {/* Foto-Fläche */}
             <button
               onClick={() => fileRef.current?.click()}
-              disabled={step === STEP.ANALYZING}
               className="w-full aspect-[4/3] rounded-2xl border-2 border-dashed border-sand-200 bg-white flex flex-col items-center justify-center gap-2 text-ink-700/60 hover:border-clay-400 hover:text-clay-500 transition overflow-hidden"
             >
               {preview ? (
-                <>
-                  <img src={preview} alt="Vorschau" className="w-full h-full object-cover" />
-                </>
+                <img src={preview} alt="Vorschau" className="w-full h-full object-cover" />
               ) : (
                 <>
                   <span className="text-4xl">📷</span>
@@ -135,8 +155,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
               onChange={handleFile}
             />
 
-            {/* Hinweis-Feld — erscheint sobald ein Foto gewählt ist */}
-            {(step === STEP.READY || step === STEP.ANALYZING) && (
+            {step === STEP.READY && (
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -150,9 +169,8 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                   type="text"
                   value={hint}
                   onChange={(e) => setHint(e.target.value)}
-                  disabled={step === STEP.ANALYZING}
                   placeholder="z.B. Nike, Größe M, 100% Baumwolle, hellblau"
-                  className="w-full rounded-xl border border-sand-200 bg-white px-3 py-2.5 text-ink-900 text-sm placeholder:text-ink-700/30 focus:border-clay-500 focus:ring-2 focus:ring-clay-500/20 outline-none transition disabled:opacity-50"
+                  className="w-full rounded-xl border border-sand-200 bg-white px-3 py-2.5 text-ink-900 text-sm placeholder:text-ink-700/30 focus:border-clay-500 focus:ring-2 focus:ring-clay-500/20 outline-none transition"
                 />
                 <p className="text-xs text-ink-700/40">
                   Marke, Größe, Material — hilft der KI bei genaueren Ergebnissen.
@@ -160,43 +178,88 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
               </motion.div>
             )}
 
-            {/* Analyse-Button */}
             {step === STEP.READY && (
-              <motion.button
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                onClick={analyze}
-                className="w-full rounded-xl bg-clay-500 text-white font-medium py-3 hover:bg-clay-600 active:scale-[0.99] transition"
-              >
-                ✦ KI-Analyse starten
-              </motion.button>
-            )}
-
-            {/* Foto wechseln (nur im READY-Zustand) */}
-            {step === STEP.READY && (
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="w-full text-center text-sm text-ink-700/50 hover:text-ink-900 transition"
-              >
-                Anderes Foto wählen
-              </button>
-            )}
-
-            {/* Spinner */}
-            {step === STEP.ANALYZING && (
-              <div className="flex items-center justify-center gap-2 text-clay-500 text-sm">
-                <motion.span
-                  className="inline-block w-4 h-4 border-2 border-clay-500 border-t-transparent rounded-full"
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-                />
-                KI analysiert dein Kleidungsstück …
-              </div>
+              <>
+                <motion.button
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  onClick={analyze}
+                  className="w-full rounded-xl bg-clay-500 text-white font-medium py-3 hover:bg-clay-600 active:scale-[0.99] transition"
+                >
+                  ✦ KI-Analyse starten
+                </motion.button>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full text-center text-sm text-ink-700/50 hover:text-ink-900 transition"
+                >
+                  Anderes Foto wählen
+                </button>
+              </>
             )}
           </div>
         )}
 
-        {/* ── Schritt 3: Metadaten bestätigen ── */}
+        {/* ── Progress: Schritt 1 (Kategorie & Farbe) ── */}
+        {step === STEP.QUICK && (
+          <div className="space-y-4">
+            {preview && (
+              <img src={preview} alt="Vorschau" className="w-full aspect-[4/3] object-cover rounded-2xl" />
+            )}
+            <div className="bg-sand-100 rounded-2xl p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <motion.div
+                  className="w-5 h-5 border-2 border-clay-500 border-t-transparent rounded-full"
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                />
+                <span className="text-sm font-medium text-ink-900">Schritt 1/2: Kategorie wird erkannt …</span>
+              </div>
+              <div className="h-1.5 bg-sand-200 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-clay-500"
+                  initial={{ width: "0%" }}
+                  animate={{ width: "50%" }}
+                  transition={{ duration: 0.6 }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Progress: Schritt 2 (Details) ── */}
+        {step === STEP.DETAIL && quickResult && (
+          <div className="space-y-4">
+            {preview && (
+              <img src={preview} alt="Vorschau" className="w-full aspect-[4/3] object-cover rounded-2xl" />
+            )}
+            <div className="bg-sand-100 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-ink-700/60 uppercase tracking-wide">Erkannt:</span>
+                <span className="text-sm font-medium text-ink-900">
+                  {quickResult.category} · {quickResult.color}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <motion.div
+                  className="w-5 h-5 border-2 border-clay-500 border-t-transparent rounded-full"
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                />
+                <span className="text-sm font-medium text-ink-900">Schritt 2/2: Details werden analysiert …</span>
+              </div>
+              <div className="h-1.5 bg-sand-200 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-clay-500"
+                  initial={{ width: "50%" }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 1.2 }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Bestätigen ── */}
         {(step === STEP.CONFIRM || step === STEP.SAVING) && metadata && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -213,7 +276,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
               <div className="col-span-2">
                 <TextField label="Name" value={metadata.name} onChange={(v) => update("name", v)} placeholder="z.B. Blaues Leinenhemd" />
               </div>
-              <SelectField label="Kategorie" value={metadata.category} onChange={(v) => update("category", v)} options={meta.categories} />
+              <GroupedSelectField label="Kategorie" value={metadata.category} onChange={(v) => update("category", v)} groups={meta.category_groups} />
               <TextField label="Farbe" value={metadata.color} onChange={(v) => update("color", v)} />
               <SelectField label="Material" value={metadata.material} onChange={(v) => update("material", v)} options={meta.materials} />
               <TextField label="Muster / Textur" value={metadata.pattern} onChange={(v) => update("pattern", v)} />

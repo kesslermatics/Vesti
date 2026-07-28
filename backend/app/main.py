@@ -13,7 +13,7 @@ from .auth import (
     hash_password,
     verify_password,
 )
-from .categories import CATEGORIES, MATERIALS, OCCASIONS, SEASONS, STYLES
+from .categories import CATEGORIES, CATEGORY_GROUPS, MATERIALS, OCCASIONS, SEASONS, STYLES
 from .config import get_settings
 from .database import Base, engine, get_db
 from .schemas import (
@@ -64,7 +64,8 @@ def health():
 @app.get("/api/meta")
 def meta():
     return {
-        "categories": CATEGORIES,
+        "category_groups": CATEGORY_GROUPS,
+        "categories": CATEGORIES,  # flache Liste fuer Rueckwaertskompatibilitaet
         "styles": STYLES,
         "occasions": OCCASIONS,
         "seasons": SEASONS,
@@ -109,7 +110,56 @@ def me(user: models.User = Depends(get_current_user)):
     return UserOut.model_validate(user)
 
 
-# ---------- Analyse ----------
+# ---------- Analyse (zweistufig) ----------
+@app.post("/api/analyze/quick")
+async def analyze_quick(
+    file: UploadFile = File(...),
+    hint: str = Form(default=""),
+    user: models.User = Depends(get_current_user),
+):
+    """Schritt 1: Schnelle Kategorie & Farbe-Erkennung."""
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Leere Datei.")
+
+    mime = file.content_type or "image/jpeg"
+    try:
+        data = gemini_service.quick_analyze_image(contents, file.filename or "upload.jpg", hint=hint)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"KI-Analyse fehlgeschlagen: {exc}")
+
+    return {
+        "category": data["category"],
+        "color": data["color"],
+        "image_base64": base64.b64encode(contents).decode(),
+        "image_mime": mime,
+    }
+
+
+@app.post("/api/analyze/detail")
+async def analyze_detail(
+    payload: dict,
+    user: models.User = Depends(get_current_user),
+):
+    """Schritt 2: Detaillierte Metadaten-Extraktion basierend auf Kategorie."""
+    try:
+        image_bytes = base64.b64decode(payload["image_base64"])
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
+
+    category = payload.get("category", "")
+    hint = payload.get("hint", "")
+
+    try:
+        data = gemini_service.detail_analyze_image(
+            image_bytes, "upload.jpg", category=category, hint=hint
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Detail-Analyse fehlgeschlagen: {exc}")
+
+    return data
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(
     file: UploadFile = File(...),
@@ -157,6 +207,7 @@ def create_item(
         occasion=payload.occasion,
         season=payload.season,
         description=payload.description,
+        details=payload.details or {},
         image_data=image_bytes,
         image_mime=payload.image_mime or "image/jpeg",
     )

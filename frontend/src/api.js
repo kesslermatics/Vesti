@@ -74,6 +74,29 @@ export const api = {
     return handle(await fetch(`${BASE}/api/items`, { headers: authHeaders() }));
   },
 
+  async analyzeQuick(file, hint = "") {
+    const form = new FormData();
+    form.append("file", file);
+    if (hint) form.append("hint", hint);
+    return handle(
+      await fetch(`${BASE}/api/analyze/quick`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: form,
+      })
+    );
+  },
+
+  async analyzeDetail(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/detail`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
   async analyze(file, hint = "") {
     const form = new FormData();
     form.append("file", file);

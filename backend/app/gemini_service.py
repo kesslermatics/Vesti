@@ -8,7 +8,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from .categories import CATEGORIES, MATERIALS, OCCASIONS, SEASONS, STYLES
+from .categories import CATEGORIES, CATEGORY_DETAILS, MATERIALS, OCCASIONS, SEASONS, STYLES
 from .config import get_settings
 
 settings = get_settings()
@@ -75,8 +75,98 @@ def _extract_json(text: str) -> dict[str, Any]:
     return json.loads(cleaned)
 
 
+def quick_analyze_image(image_bytes: bytes, filename: str, hint: str = "") -> dict[str, Any]:
+    """Schritt 1: Schnelle Erkennung von Kategorie und Farbe."""
+    mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+
+    hint_block = (
+        f"\nZusatzinfo vom Nutzer: {hint.strip()}"
+        if hint and hint.strip()
+        else ""
+    )
+
+    prompt = f"""Du bist ein Mode-Experte. Analysiere dieses Bild und erkenne NUR die Kategorie und die dominante Farbe.{hint_block}
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "category": "einer aus: {', '.join(CATEGORIES[:20])}...",
+  "color": "dominante Farbe(n) auf Deutsch"
+}}"""
+
+    response = _call_with_retry(
+        model=settings.gemini_model,
+        contents=[
+            types.Part.from_bytes(data=image_bytes, mime_type=mime),
+            prompt,
+        ],
+    )
+
+    data = _extract_json(response.text or "{}")
+    return {
+        "category": str(data.get("category", "")),
+        "color": str(data.get("color", "")),
+    }
+
+
+def detail_analyze_image(
+    image_bytes: bytes, filename: str, category: str, hint: str = ""
+) -> dict[str, Any]:
+    """Schritt 2: Detaillierte Analyse aller Metadaten basierend auf der Kategorie."""
+    mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+
+    hint_block = (
+        f"\nZusatzinfo vom Nutzer: {hint.strip()}"
+        if hint and hint.strip()
+        else ""
+    )
+
+    # Kategorienspezifische Detail-Felder holen
+    detail_fields = CATEGORY_DETAILS.get(category, [])
+    detail_prompt = ""
+    if detail_fields:
+        detail_prompt = f"""  "details": {{
+    {', '.join(f'"{field}": "Wert"' for field in detail_fields)}
+  }},"""
+
+    prompt = f"""Du bist ein Mode-Experte. Analysiere dieses {category} im Detail.{hint_block}
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "name": "kurzer sprechender Name, z.B. 'Blaues Leinenhemd'",
+  "material": "einer aus: {', '.join(MATERIALS[:15])}...",
+  "pattern": "Muster/Textur, z.B. 'uni', 'gestreift', 'kariert'",
+  "style": "einer aus: {', '.join(STYLES)}",
+  "occasion": "einer aus: {', '.join(OCCASIONS[:10])}...",
+  "season": "einer aus: {', '.join(SEASONS)}",
+  "description": "ein kurzer deutscher Satz zum Stueck",
+{detail_prompt}
+}}"""
+
+    response = _call_with_retry(
+        model=settings.gemini_model,
+        contents=[
+            types.Part.from_bytes(data=image_bytes, mime_type=mime),
+            prompt,
+        ],
+    )
+
+    data = _extract_json(response.text or "{}")
+    details = data.pop("details", {}) if "details" in data else {}
+
+    return {
+        "name": str(data.get("name", "")),
+        "material": str(data.get("material", "")),
+        "pattern": str(data.get("pattern", "")),
+        "style": str(data.get("style", "")),
+        "occasion": str(data.get("occasion", "")),
+        "season": str(data.get("season", "")),
+        "description": str(data.get("description", "")),
+        "details": details if isinstance(details, dict) else {},
+    }
+
+
 def analyze_image(image_bytes: bytes, filename: str, hint: str = "") -> dict[str, Any]:
-    """Extrahiert Metadaten eines Kleidungsstuecks aus einem Bild."""
+    """Legacy: einstufige Analyse (fuer Abwaertskompatibilitaet, wird nicht mehr verwendet)."""
     mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
 
     hint_block = (

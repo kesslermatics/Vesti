@@ -56,6 +56,7 @@ class AnalyzeResponse(BaseModel):
 class ItemCreate(ItemMetadata):
     image_base64: str
     image_mime: str = "image/jpeg"
+    details: dict = {}
 
 
 class ItemOut(ItemMetadata):
@@ -63,6 +64,7 @@ class ItemOut(ItemMetadata):
 
     id: int
     image_url: str = ""
+    details: dict = {}
     created_at: datetime
 
 

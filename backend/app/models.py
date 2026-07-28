@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -41,6 +41,9 @@ class ClothingItem(Base):
     occasion: Mapped[str] = mapped_column(String(60), default="")
     season: Mapped[str] = mapped_column(String(60), default="")
     description: Mapped[str] = mapped_column(Text, default="")
+
+    # Kategorienspezifische Details (z.B. {"schnitt": "slim", "waschung": "dark"})
+    details: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     # Bild direkt in der DB gespeichert
     image_data: Mapped[bytes] = mapped_column(LargeBinary)
