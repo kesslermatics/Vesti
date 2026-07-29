@@ -8,11 +8,14 @@ import Profile from "./components/Profile";
 import Shopping from "./components/Shopping";
 import Analytics from "./components/Analytics";
 import Toast from "./components/Toast";
+import OutfitGenerator from "./components/OutfitGenerator";
+import Chat from "./components/Chat";
 
 const TAB = {
   WARDROBE: "wardrobe",
   ANALYTICS: "analytics",
   SHOPPING: "shopping",
+  CHAT: "chat",
   PROFILE: "profile",
 };
 
@@ -20,6 +23,7 @@ const TABS = [
   { id: TAB.WARDROBE, label: "Garderobe", icon: "🧥" },
   { id: TAB.ANALYTICS, label: "Analyse", icon: "📊" },
   { id: TAB.SHOPPING, label: "Shopping", icon: "🛍️" },
+  { id: TAB.CHAT, label: "Chat", icon: "💬" },
   { id: TAB.PROFILE, label: "Profil", icon: "👤" },
 ];
 
@@ -163,8 +167,17 @@ export default function App() {
   return (
     <div className="min-h-full pb-32">
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-sand-50/80 backdrop-blur-md border-b border-sand-100">
-        <div className="max-w-3xl mx-auto px-5 py-4 flex items-center justify-between">
+      <header 
+        className="sticky z-30 bg-sand-50/80 backdrop-blur-md border-b border-sand-100"
+        style={{ top: "env(safe-area-inset-top, 0)" }}
+      >
+        <div 
+          className="max-w-3xl mx-auto px-5 flex items-center justify-between"
+          style={{
+            paddingTop: "max(env(safe-area-inset-top), 1rem)",
+            paddingBottom: "1rem"
+          }}
+        >
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-ink-900">Vesti</h1>
             <p className="text-xs text-ink-700/60">
@@ -229,6 +242,15 @@ export default function App() {
 
               {!loading && items.length > 0 && (
                 <>
+                  {/* Outfit-Generator */}
+                  <OutfitGenerator 
+                    meta={meta} 
+                    onItemClick={(id) => {
+                      const item = items.find(it => it.id === id);
+                      if (item) setSelected(item);
+                    }} 
+                  />
+
                   {/* Toggle für Ansichtsmodus */}
                   <div className="flex items-center justify-end mb-4">
                     <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
@@ -387,6 +409,19 @@ export default function App() {
             </motion.div>
           )}
 
+          {/* ─────────── Chat ─────────── */}
+          {tab === TAB.CHAT && (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="h-[calc(100vh-12rem)]"
+            >
+              <Chat />
+            </motion.div>
+          )}
+
           {/* ─────────── Profil ─────────── */}
           {tab === TAB.PROFILE && (
             <motion.div
@@ -426,13 +461,13 @@ export default function App() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className="flex-1 relative py-3 flex flex-col items-center gap-0.5 transition"
+                className="flex-1 relative py-3 flex flex-col items-center gap-0.5 transition min-w-0"
               >
-                <span className={`text-xl leading-none ${active ? "" : "opacity-50 grayscale"}`}>
+                <span className={`text-lg leading-none ${active ? "" : "opacity-50 grayscale"}`}>
                   {t.icon}
                 </span>
                 <span
-                  className={`text-[11px] font-medium ${
+                  className={`text-[10px] sm:text-[11px] font-medium truncate w-full px-1 ${
                     active ? "text-clay-600" : "text-ink-700/50"
                   }`}
                 >

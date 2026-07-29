@@ -238,10 +238,10 @@ Zusatzwunsch: {note or 'keiner'}
 Verfügbare Teile in der Garderobe:
 {wardrobe_text}
 
-WICHTIG: Sei ehrlich. Wenn das Basis-Teil oder die verfügbaren Kombinationen für den Anlass
-nicht wirklich geeignet sind, sag das klar – und erkläre trotzdem, wie man das Beste daraus macht.
-Beispiel: Ein schwarzes T-Shirt ist für eine Hochzeit eigentlich zu casual, aber mit den richtigen
-Teilen (schwarze Anzughose, Blazer) kann man es notfalls retten – das sollt du dann sagen.
+WICHTIG: 
+- Sei ehrlich. Wenn das Basis-Teil oder die verfügbaren Kombinationen für den Anlass nicht wirklich geeignet sind, sag das klar.
+- Berücksichtige ALLE Kategorien: Oberteile, Hosen, Schuhe, Jacken, Gürtel, Accessoires, etc.
+- Ein komplettes Outfit sollte mindestens Oberteil + Unterteil enthalten, idealerweise auch Schuhe und ggf. Jacke/Accessoires.
 
 Wähle die am besten passenden IDs aus der Garderobe (Basis-Teil nicht nochmal nennen).
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
@@ -276,6 +276,87 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
         "suitability_reason": str(data.get("suitability_reason", "")),
         "explanation": str(data.get("explanation", "")),
     }
+
+
+def generate_outfits(
+    wardrobe: list[dict[str, Any]],
+    occasion: str,
+    note: str,
+    count: int = 5,
+) -> dict[str, Any]:
+    """Generiert mehrere komplette Outfit-Vorschläge aus der Garderobe."""
+    if not wardrobe:
+        return {"outfits": [], "message": "Deine Garderobe ist noch leer."}
+    
+    wardrobe_lines = []
+    for it in wardrobe:
+        qty_txt = f" ×{it['quantity']}" if it.get('quantity', 1) > 1 else ""
+        wardrobe_lines.append(
+            f"- ID {it['id']}{qty_txt}: {it.get('name') or it['category']} "
+            f"({it['category']}, Farbe: {it.get('color', '?')}, "
+            f"Stil: {it.get('style', '?')}, Material: {it.get('material', '?')})"
+        )
+    wardrobe_text = "\n".join(wardrobe_lines)
+
+    prompt = f"""Du bist ein kreativer Stilberater. Der Nutzer möchte Outfit-Vorschläge aus seiner Garderobe.
+
+Anlass: {occasion or 'Alltag / keine Vorgabe'}
+Zusatzwunsch: {note or 'keiner'}
+
+Verfügbare Teile in der Garderobe:
+{wardrobe_text}
+
+Erstelle {count} verschiedene, komplette Outfits aus dieser Garderobe.
+
+WICHTIG:
+- Jedes Outfit sollte KOMPLETT sein: Oberteil + Unterteil + idealerweise Schuhe, Jacke/Blazer wenn vorhanden, Gürtel/Accessoires wo passend
+- Variiere die Kombinationen - keine Duplikate!
+- Sei ehrlich: wenn die Garderobe nicht viel hergibt oder für den Anlass ungeeignet ist, sag das
+- Berücksichtige ALLE Kategorien: T-Shirts, Hemden, Hosen, Jeans, Schuhe, Jacken, Gürtel, Accessoires, etc.
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "outfits": [
+    {{
+      "item_ids": [Liste von IDs als Zahlen - mindestens 2, besser 3-5 Teile pro Outfit],
+      "title": "kurzer Titel, z.B. 'Smart Casual Look' oder 'Relaxed Weekend'",
+      "why": "1-2 Sätze: warum diese Kombination für den Anlass passt"
+    }}
+  ]
+}}"""
+
+    response = _call_with_retry(
+        model=settings.gemini_model,
+        contents=[prompt],
+    )
+
+    data = _extract_json(response.text or "{}")
+    raw_outfits = data.get("outfits", [])
+    
+    outfits = []
+    for outfit in raw_outfits[:count]:
+        if not isinstance(outfit, dict):
+            continue
+        
+        raw_ids = outfit.get("item_ids", [])
+        item_ids: list[int] = []
+        for x in raw_ids:
+            try:
+                item_ids.append(int(x))
+            except (ValueError, TypeError):
+                continue
+        
+        if not item_ids:  # Skip empty outfits
+            continue
+            
+        outfits.append({
+            "item_ids": item_ids,
+            "title": str(outfit.get("title", "Outfit")),
+            "why": str(outfit.get("why", "")),
+        })
+    
+    return {"outfits": outfits}
+
 
 
 def _profile_block(profile: dict[str, Any]) -> str:
@@ -542,4 +623,58 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
         "weaknesses": _str_list("weaknesses"),
         "next_steps": _str_list("next_steps"),
         "style_profile": str(data.get("style_profile", "")),
+    }
+
+
+def chat_with_stylist(
+    message: str,
+    wardrobe: list[dict[str, Any]],
+    profile: dict[str, Any],
+    history: list[dict[str, str]] | None = None,
+    image_bytes: bytes | None = None,
+    image_mime: str = "image/jpeg",
+) -> dict[str, Any]:
+    """Freier Chat mit dem Style-Assistenten, mit Zugriff auf Garderobe und optionalem Bild."""
+    
+    history_block = ""
+    if history:
+        turns = []
+        for msg in history[-10:]:  # letzte 10 Nachrichten
+            role = "Nutzer" if msg.get("role") == "user" else "Du (Vesti)"
+            content = msg.get("content", "")
+            turns.append(f"{role}: {content}")
+        history_block = "\n\nBisheriger Chat-Verlauf:\n" + "\n".join(turns)
+    
+    prompt = f"""Du bist Vesti, ein freundlicher und kompetenter persönlicher Stilberater. 
+Der Nutzer chattet mit dir über Mode, Stil und seine Garderobe.
+
+Profil des Nutzers:
+{_profile_block(profile)}
+
+Garderobe des Nutzers (mit Stückzahlen):
+{_wardrobe_block(wardrobe)}
+
+{history_block}
+
+Aktuelle Nachricht des Nutzers: {message}
+
+Antworte natürlich, freundlich und hilfreich auf Deutsch. Du kannst:
+- Outfit-Vorschläge aus der Garderobe machen
+- Styling-Tipps geben
+- Fragen zu Kleidungsstücken beantworten
+- Bei hochgeladenen Bildern: Outfit bewerten, Feedback geben
+- Allgemeine Mode-Fragen beantworten
+
+Sei ehrlich aber freundlich. Wenn etwas nicht passt, sag es konstruktiv.
+Antworte in 2-5 Sätzen, es sei denn mehr Detail ist nötig."""
+
+    contents: list[Any] = []
+    if image_bytes:
+        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
+    contents.append(prompt)
+
+    response = _call_with_retry(model=settings.gemini_model, contents=contents)
+    
+    return {
+        "response": response.text.strip(),
     }

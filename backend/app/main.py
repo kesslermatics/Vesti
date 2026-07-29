@@ -1,4 +1,5 @@
 import base64
+import json
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -492,6 +493,70 @@ def recommend(
     )
 
 
+@app.post("/api/outfits/generate")
+def generate_outfits_endpoint(
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Generiert mehrere komplette Outfit-Vorschläge aus der Garderobe."""
+    occasion = payload.get("occasion", "")
+    note = payload.get("note", "")
+    count = min(10, max(1, int(payload.get("count", 5))))
+    
+    all_items = db.scalars(
+        select(models.ClothingItem).where(models.ClothingItem.user_id == user.id)
+    ).all()
+    
+    if not all_items:
+        raise HTTPException(status_code=400, detail="Deine Garderobe ist noch leer.")
+    
+    wardrobe = [
+        {
+            "id": it.id,
+            "name": it.name,
+            "category": it.category,
+            "color": it.color,
+            "style": it.style,
+            "material": it.material,
+            "quantity": it.quantity,
+        }
+        for it in all_items
+    ]
+    
+    try:
+        result = gemini_service.generate_outfits(wardrobe, occasion, note, count)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Outfit-Generierung fehlgeschlagen: {exc}")
+    
+    by_id = {it.id: it for it in all_items}
+    
+    outfits = []
+    for outfit in result["outfits"]:
+        items = []
+        for item_id in outfit["item_ids"]:
+            it = by_id.get(item_id)
+            if not it:
+                continue
+            items.append({
+                "id": it.id,
+                "name": it.name or it.category,
+                "category": it.category,
+                "image_url": _image_url(request, it.id),
+            })
+        
+        if items:  # Only include outfits with valid items
+            outfits.append({
+                "items": items,
+                "title": outfit["title"],
+                "why": outfit["why"],
+            })
+    
+    return {"outfits": outfits}
+
+
+
 # ---------- Shopping ----------
 def _full_wardrobe(db: Session, user_id: int) -> list[dict]:
     """Komplette Garderobe eines Nutzers inkl. Details und Stueckzahl."""
@@ -637,3 +702,46 @@ def analytics_insights(
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
+
+
+# ---------- Chat ----------
+@app.post("/api/chat")
+async def chat(
+    message: str = Form(...),
+    history: str = Form(default="[]"),
+    image: UploadFile = File(default=None),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Freier Chat mit dem Style-Assistenten."""
+    if not message.strip() and not image:
+        raise HTTPException(status_code=400, detail="Nachricht oder Bild erforderlich.")
+    
+    # Parse history
+    try:
+        history_list = json.loads(history) if history else []
+    except Exception:  # noqa: BLE001
+        history_list = []
+    
+    # Read image if provided
+    image_bytes = None
+    image_mime = "image/jpeg"
+    if image:
+        image_bytes = await image.read()
+        image_mime = image.content_type or "image/jpeg"
+    
+    wardrobe = _full_wardrobe(db, user.id)
+    
+    try:
+        result = gemini_service.chat_with_stylist(
+            message=message.strip(),
+            wardrobe=wardrobe,
+            profile=_profile_dict(user),
+            history=history_list,
+            image_bytes=image_bytes,
+            image_mime=image_mime,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Chat fehlgeschlagen: {exc}")
+    
+    return result

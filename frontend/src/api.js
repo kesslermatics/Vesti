@@ -203,4 +203,30 @@ export const api = {
       })
     );
   },
+
+  async generateOutfits(payload) {
+    return handle(
+      await fetch(`${BASE}/api/outfits/generate`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async chat(message, history = [], imageFile = null) {
+    const form = new FormData();
+    form.append("message", message);
+    form.append("history", JSON.stringify(history));
+    if (imageFile) {
+      form.append("image", imageFile);
+    }
+    return handle(
+      await fetch(`${BASE}/api/chat`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: form,
+      })
+    );
+  },
 };
