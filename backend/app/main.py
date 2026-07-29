@@ -70,6 +70,52 @@ def _to_out(request: Request, item: models.ClothingItem) -> ItemOut:
     return out
 
 
+def _generate_welcome_message(new_item: models.ClothingItem, existing_items: list[models.ClothingItem]) -> str:
+    """Generiert eine kontextbezogene Willkommensnachricht für ein neues Teil."""
+    if not existing_items:
+        return f"🎉 Super Start! Dein {new_item.name or new_item.category} ist das erste Teil in deiner Garderobe."
+    
+    # Ähnliche Teile finden (gleiche Kategorie oder Farbe)
+    same_category = [it for it in existing_items if it.category == new_item.category]
+    same_color = [it for it in existing_items if it.color and new_item.color and it.color.lower() == new_item.color.lower()]
+    
+    # Kombinierbare Teile finden (komplementäre Kategorien)
+    combines_with = {
+        "T-Shirt": ["Jeans", "Chino", "Hose", "Shorts", "Rock"],
+        "Hemd": ["Jeans", "Chino", "Hose", "Anzughose", "Blazer"],
+        "Pullover": ["Jeans", "Chino", "Hose", "Rock"],
+        "Jacke": ["T-Shirt", "Hemd", "Pullover"],
+        "Blazer": ["Hemd", "Hose", "Anzughose", "Chino"],
+        "Jeans": ["T-Shirt", "Hemd", "Pullover", "Jacke"],
+        "Chino": ["T-Shirt", "Hemd", "Pullover", "Jacke", "Blazer"],
+        "Hose": ["T-Shirt", "Hemd", "Pullover", "Jacke", "Blazer"],
+        "Kleid": ["Jacke", "Blazer", "Cardigan"],
+        "Rock": ["T-Shirt", "Hemd", "Pullover", "Blazer"],
+    }
+    
+    complementary = []
+    for cat, matches in combines_with.items():
+        if new_item.category == cat:
+            complementary = [it for it in existing_items if it.category in matches]
+            break
+    
+    # Message generieren basierend auf Kontext
+    if len(same_category) >= 3:
+        return f"Du liebst {new_item.category}! Mit {len(same_category) + 1} Stück hast du jetzt eine solide Auswahl."
+    elif complementary:
+        example = complementary[0]
+        if same_color and example in same_color:
+            return f"Tolle Ergänzung! Passt perfekt zu deinen {example.color} {example.category}."
+        return f"Gute Wahl! Kombiniert sich super mit deinen {len(complementary)} {complementary[0].category}-Teilen."
+    elif same_color:
+        example = same_color[0]
+        return f"Schöne Ergänzung zu deinem {example.category} in {new_item.color}!"
+    elif len(existing_items) < 5:
+        return f"Deine Garderobe wächst! {new_item.name or new_item.category} ist eine tolle Ergänzung."
+    else:
+        return f"✨ {new_item.name or new_item.category} wurde zur Garderobe hinzugefügt!"
+
+
 # ---------- Health / Meta ----------
 @app.get("/api/health")
 def health():
@@ -297,7 +343,24 @@ def create_item(
     db.add(item)
     db.commit()
     db.refresh(item)
-    return _to_out(request, item)
+    
+    # Generiere Welcome-Message basierend auf Garderobe
+    existing_items = db.scalars(
+        select(models.ClothingItem)
+        .where(
+            models.ClothingItem.user_id == user.id,
+            models.ClothingItem.id != item.id
+        )
+    ).all()
+    
+    welcome_msg = _generate_welcome_message(item, existing_items)
+    
+    result = _to_out(request, item)
+    # Füge Welcome-Message hinzu (nicht im Schema, aber im Response)
+    result_dict = result.model_dump()
+    result_dict["welcome_message"] = welcome_msg
+    
+    return result_dict
 
 
 @app.get("/api/items", response_model=list[ItemOut])

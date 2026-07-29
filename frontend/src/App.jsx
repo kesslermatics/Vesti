@@ -7,6 +7,7 @@ import Auth from "./components/Auth";
 import Profile from "./components/Profile";
 import Shopping from "./components/Shopping";
 import Analytics from "./components/Analytics";
+import Toast from "./components/Toast";
 
 const TAB = {
   WARDROBE: "wardrobe",
@@ -22,16 +23,23 @@ const TABS = [
   { id: TAB.PROFILE, label: "Profil", icon: "👤" },
 ];
 
+const VIEW_MODE = {
+  GRID: "grid",
+  LIST: "list",
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
   const [tab, setTab] = useState(TAB.WARDROBE);
+  const [viewMode, setViewMode] = useState(VIEW_MODE.GRID);
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
 
   // Beim Start: Token pruefen und Nutzer laden
   useEffect(() => {
@@ -106,6 +114,10 @@ export default function App() {
 
   function handleCreated(item) {
     setItems((prev) => [item, ...prev]);
+    // Toast mit Welcome-Message anzeigen
+    if (item.welcome_message) {
+      setToastMessage(item.welcome_message);
+    }
   }
 
   function handleDeleted(id) {
@@ -205,62 +217,139 @@ export default function App() {
                 </motion.div>
               )}
 
-              <div className="space-y-8">
-                {grouped.map((group) => {
-                  const groupTotal = group.items.reduce(
-                    (s, i) => s + (i.quantity || 1),
-                    0
-                  );
-                  return (
-                    <section key={group.category}>
-                      <div className="flex items-center gap-3 mb-3">
-                        <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
-                          {group.category}
-                        </h2>
-                        <span className="text-xs text-ink-700/40">{groupTotal}</span>
-                        <div className="flex-1 h-px bg-sand-100" />
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        <AnimatePresence>
-                          {group.items.map((item) => (
-                            <motion.button
-                              key={item.id}
-                              layout
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.9 }}
-                              whileTap={{ scale: 0.97 }}
-                              onClick={() => setSelected(item)}
-                              className="group text-left"
-                            >
-                              <div className="relative aspect-square rounded-2xl overflow-hidden bg-white shadow-soft">
-                                <img
-                                  src={item.image_url}
-                                  alt={item.name}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                                />
-                                {(item.quantity || 1) > 1 && (
-                                  <span className="absolute top-2 right-2 bg-ink-900/80 text-white text-xs font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
-                                    ×{item.quantity}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="mt-1.5 block text-sm text-ink-800 truncate">
-                                {item.name || item.category}
-                              </span>
-                              {item.color && (
-                                <span className="block text-xs text-ink-700/50 truncate">
-                                  {item.color}
-                                </span>
-                              )}
-                            </motion.button>
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    </section>
-                  );
-                })}
-              </div>
+              {!loading && items.length > 0 && (
+                <>
+                  {/* Toggle für Ansichtsmodus */}
+                  <div className="flex items-center justify-end mb-4">
+                    <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
+                      <button
+                        onClick={() => setViewMode(VIEW_MODE.GRID)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                          viewMode === VIEW_MODE.GRID
+                            ? "bg-white text-ink-900 shadow-sm"
+                            : "text-ink-700/60 hover:text-ink-900"
+                        }`}
+                      >
+                        <span className="mr-1">▦</span> Grid
+                      </button>
+                      <button
+                        onClick={() => setViewMode(VIEW_MODE.LIST)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                          viewMode === VIEW_MODE.LIST
+                            ? "bg-white text-ink-900 shadow-sm"
+                            : "text-ink-700/60 hover:text-ink-900"
+                        }`}
+                      >
+                        <span className="mr-1">☰</span> Liste
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-8">
+                    {grouped.map((group) => {
+                      const groupTotal = group.items.reduce(
+                        (s, i) => s + (i.quantity || 1),
+                        0
+                      );
+                      return (
+                        <section key={group.category}>
+                          <div className="flex items-center gap-3 mb-3">
+                            <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
+                              {group.category}
+                            </h2>
+                            <span className="text-xs text-ink-700/40">{groupTotal}</span>
+                            <div className="flex-1 h-px bg-sand-100" />
+                          </div>
+
+                          {/* Grid-Ansicht */}
+                          {viewMode === VIEW_MODE.GRID && (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                              <AnimatePresence>
+                                {group.items.map((item) => (
+                                  <motion.button
+                                    key={item.id}
+                                    layout
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.9 }}
+                                    whileTap={{ scale: 0.97 }}
+                                    onClick={() => setSelected(item)}
+                                    className="group text-left"
+                                  >
+                                    <div className="relative aspect-square rounded-2xl overflow-hidden bg-white shadow-soft">
+                                      <img
+                                        src={item.image_url}
+                                        alt={item.name}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                      />
+                                      {(item.quantity || 1) > 1 && (
+                                        <span className="absolute top-2 right-2 bg-ink-900/80 text-white text-xs font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
+                                          ×{item.quantity}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="mt-1.5 block text-sm text-ink-800 truncate">
+                                      {item.name || item.category}
+                                    </span>
+                                    {item.color && (
+                                      <span className="block text-xs text-ink-700/50 truncate">
+                                        {item.color}
+                                      </span>
+                                    )}
+                                  </motion.button>
+                                ))}
+                              </AnimatePresence>
+                            </div>
+                          )}
+
+                          {/* Listen-Ansicht */}
+                          {viewMode === VIEW_MODE.LIST && (
+                            <div className="space-y-2">
+                              <AnimatePresence>
+                                {group.items.map((item) => (
+                                  <motion.button
+                                    key={item.id}
+                                    layout
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: 10 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => setSelected(item)}
+                                    className="w-full group text-left bg-white rounded-xl p-3 shadow-soft hover:shadow-md transition flex items-center gap-3"
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-baseline gap-2">
+                                        <span className="font-medium text-ink-900 truncate">
+                                          {item.name || item.category}
+                                        </span>
+                                        {(item.quantity || 1) > 1 && (
+                                          <span className="text-xs text-ink-700/50 flex-shrink-0">
+                                            ×{item.quantity}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-0.5 text-xs text-ink-700/50">
+                                        {item.color && <span>{item.color}</span>}
+                                        {item.color && item.brand && <span>·</span>}
+                                        {item.brand && <span>{item.brand}</span>}
+                                        {(item.color || item.brand) && item.material && <span>·</span>}
+                                        {item.material && <span>{item.material}</span>}
+                                      </div>
+                                    </div>
+                                    <span className="text-ink-700/30 group-hover:text-ink-700/60 transition">
+                                      →
+                                    </span>
+                                  </motion.button>
+                                ))}
+                              </AnimatePresence>
+                            </div>
+                          )}
+                        </section>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </motion.div>
           )}
 
@@ -370,6 +459,9 @@ export default function App() {
           onUpdated={handleUpdated}
         />
       )}
+
+      {/* Toast für Welcome-Messages */}
+      <Toast message={toastMessage} onClose={() => setToastMessage("")} />
     </div>
   );
 }
