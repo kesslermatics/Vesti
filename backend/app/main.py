@@ -308,7 +308,7 @@ async def analyze(
 
 
 # ---------- Items ----------
-@app.post("/api/items", response_model=ItemOut)
+@app.post("/api/items")
 def create_item(
     payload: ItemCreate,
     request: Request,
@@ -356,7 +356,7 @@ def create_item(
     welcome_msg = _generate_welcome_message(item, existing_items)
     
     result = _to_out(request, item)
-    # Füge Welcome-Message hinzu (nicht im Schema, aber im Response)
+    # Füge Welcome-Message hinzu (als zusätzliches Feld im Response)
     result_dict = result.model_dump()
     result_dict["welcome_message"] = welcome_msg
     

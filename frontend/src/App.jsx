@@ -32,7 +32,11 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
   const [tab, setTab] = useState(TAB.WARDROBE);
-  const [viewMode, setViewMode] = useState(VIEW_MODE.GRID);
+  const [viewMode, setViewMode] = useState(() => {
+    // Load saved view mode from localStorage
+    const saved = localStorage.getItem("vesti-view-mode");
+    return saved === VIEW_MODE.LIST ? VIEW_MODE.LIST : VIEW_MODE.GRID;
+  });
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +44,11 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState("");
+
+  // Save view mode to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem("vesti-view-mode", viewMode);
+  }, [viewMode]);
 
   // Beim Start: Token pruefen und Nutzer laden
   useEffect(() => {
@@ -115,9 +124,10 @@ export default function App() {
   function handleCreated(item) {
     setItems((prev) => [item, ...prev]);
     // Toast mit Welcome-Message anzeigen
-    if (item.welcome_message) {
-      setToastMessage(item.welcome_message);
-    }
+    console.log("Item created:", item);
+    const message = item.welcome_message || `✨ ${item.name || item.category} wurde hinzugefügt!`;
+    console.log("Toast message:", message);
+    setToastMessage(message);
   }
 
   function handleDeleted(id) {
