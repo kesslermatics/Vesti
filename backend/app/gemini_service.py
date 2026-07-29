@@ -217,14 +217,14 @@ def recommend_outfit(
     wardrobe_lines = []
     for it in wardrobe:
         wardrobe_lines.append(
-            f"- ID {it['id']}: {it.get('name') or it['category']} "
+            f"- {it.get('name') or it['category']} "
             f"({it['category']}, Farbe: {it.get('color', '?')}, "
             f"Stil: {it.get('style', '?')}, Material: {it.get('material', '?')})"
         )
     wardrobe_text = "\n".join(wardrobe_lines) if wardrobe_lines else "(keine weiteren Teile)"
 
     base_text = (
-        f"ID {base_item['id']}: {base_item.get('name') or base_item['category']} "
+        f"{base_item.get('name') or base_item['category']} "
         f"({base_item['category']}, Farbe: {base_item.get('color', '?')}, "
         f"Stil: {base_item.get('style', '?')})"
     )
@@ -242,14 +242,20 @@ WICHTIG:
 - Sei ehrlich. Wenn das Basis-Teil oder die verfügbaren Kombinationen für den Anlass nicht wirklich geeignet sind, sag das klar.
 - Berücksichtige ALLE Kategorien: Oberteile, Hosen, Schuhe, Jacken, Gürtel, Accessoires, etc.
 - Ein komplettes Outfit sollte mindestens Oberteil + Unterteil enthalten, idealerweise auch Schuhe und ggf. Jacke/Accessoires.
+- Nenne in deiner Erklärung die Teile NUR beim Namen (z.B. "schwarze Chino"), KEINE IDs oder Nummern!
 
-Wähle die am besten passenden IDs aus der Garderobe (Basis-Teil nicht nochmal nennen).
+Wähle die am besten passenden Teile aus der Garderobe (Basis-Teil nicht nochmal nennen).
+
+ANTWORT-FORMAT:
+Erstelle eine interne Liste der passenden Teil-Indizes (0-basiert, entsprechend der Reihenfolge oben).
+In deiner Erklärung nenne die Teile NUR beim Namen.
+
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
-  "item_ids": [Liste der empfohlenen IDs als Zahlen],
+  "item_indices": [Liste der Indizes als Zahlen, 0-basiert],
   "suitability": "perfekt" | "geht" | "notlösung" | "ungeeignet",
   "suitability_reason": "ein ehrlicher Satz: warum das Outfit für den Anlass (nicht) passt",
-  "explanation": "2-4 Sätze auf Deutsch: wie das Outfit wirkt, was gut passt, was fehlt oder stört, und welchen Tipp du für diesen Anlass noch hast"
+  "explanation": "2-4 Sätze auf Deutsch: wie das Outfit wirkt, was gut passt, was fehlt oder stört, und welchen Tipp du für diesen Anlass noch hast. Nenne Teile nur beim Namen!"
 }}"""
 
     response = _call_with_retry(
@@ -258,12 +264,16 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
     )
 
     data = _extract_json(response.text or "{}")
-    raw_ids = data.get("item_ids", [])
+    raw_indices = data.get("item_indices", [])
+    
+    # Convert indices to IDs
     item_ids: list[int] = []
-    for x in raw_ids:
+    for idx in raw_indices:
         try:
-            item_ids.append(int(x))
-        except (ValueError, TypeError):
+            idx_int = int(idx)
+            if 0 <= idx_int < len(wardrobe):
+                item_ids.append(wardrobe[idx_int]["id"])
+        except (ValueError, TypeError, IndexError):
             continue
 
     suitability = str(data.get("suitability", "geht"))
@@ -289,10 +299,10 @@ def generate_outfits(
         return {"outfits": [], "message": "Deine Garderobe ist noch leer."}
     
     wardrobe_lines = []
-    for it in wardrobe:
+    for idx, it in enumerate(wardrobe):
         qty_txt = f" ×{it['quantity']}" if it.get('quantity', 1) > 1 else ""
         wardrobe_lines.append(
-            f"- ID {it['id']}{qty_txt}: {it.get('name') or it['category']} "
+            f"{idx}. {it.get('name') or it['category']}{qty_txt} "
             f"({it['category']}, Farbe: {it.get('color', '?')}, "
             f"Stil: {it.get('style', '?')}, Material: {it.get('material', '?')})"
         )
@@ -303,7 +313,7 @@ def generate_outfits(
 Anlass: {occasion or 'Alltag / keine Vorgabe'}
 Zusatzwunsch: {note or 'keiner'}
 
-Verfügbare Teile in der Garderobe:
+Verfügbare Teile in der Garderobe (nummeriert):
 {wardrobe_text}
 
 Erstelle {count} verschiedene, komplette Outfits aus dieser Garderobe.
@@ -313,14 +323,16 @@ WICHTIG:
 - Variiere die Kombinationen - keine Duplikate!
 - Sei ehrlich: wenn die Garderobe nicht viel hergibt oder für den Anlass ungeeignet ist, sag das
 - Berücksichtige ALLE Kategorien: T-Shirts, Hemden, Hosen, Jeans, Schuhe, Jacken, Gürtel, Accessoires, etc.
+- Verwende die NUMMERN (0, 1, 2, ...) aus der Liste oben um Teile zu referenzieren
+- In deiner Begründung nenne die Teile NUR beim Namen (z.B. "blaues Hemd"), KEINE Nummern oder IDs!
 
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
   "outfits": [
     {{
-      "item_ids": [Liste von IDs als Zahlen - mindestens 2, besser 3-5 Teile pro Outfit],
+      "item_indices": [Liste von Indizes als Zahlen - mindestens 2, besser 3-5 Teile pro Outfit],
       "title": "kurzer Titel, z.B. 'Smart Casual Look' oder 'Relaxed Weekend'",
-      "why": "1-2 Sätze: warum diese Kombination für den Anlass passt"
+      "why": "1-2 Sätze: warum diese Kombination für den Anlass passt. Nenne Teile nur beim Namen!"
     }}
   ]
 }}"""
@@ -338,12 +350,14 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
         if not isinstance(outfit, dict):
             continue
         
-        raw_ids = outfit.get("item_ids", [])
+        raw_indices = outfit.get("item_indices", [])
         item_ids: list[int] = []
-        for x in raw_ids:
+        for idx in raw_indices:
             try:
-                item_ids.append(int(x))
-            except (ValueError, TypeError):
+                idx_int = int(idx)
+                if 0 <= idx_int < len(wardrobe):
+                    item_ids.append(wardrobe[idx_int]["id"])
+            except (ValueError, TypeError, IndexError):
                 continue
         
         if not item_ids:  # Skip empty outfits
@@ -645,25 +659,45 @@ def chat_with_stylist(
             turns.append(f"{role}: {content}")
         history_block = "\n\nBisheriger Chat-Verlauf:\n" + "\n".join(turns)
     
+    # Format wardrobe without IDs
+    wardrobe_lines = []
+    for it in wardrobe:
+        qty_txt = f" ×{it.get('quantity', 1)}" if it.get('quantity', 1) > 1 else ""
+        parts = [
+            it.get('name') or it['category'],
+            it['category'],
+            it.get('color', ''),
+            it.get('material', ''),
+        ]
+        desc = ", ".join(p for p in parts if p)
+        if it.get('brand'):
+            desc += f", {it['brand']}"
+        wardrobe_lines.append(f"- {desc}{qty_txt}")
+    
+    wardrobe_text = "\n".join(wardrobe_lines) if wardrobe_lines else "(Garderobe ist leer)"
+    
     prompt = f"""Du bist Vesti, ein freundlicher und kompetenter persönlicher Stilberater. 
 Der Nutzer chattet mit dir über Mode, Stil und seine Garderobe.
 
 Profil des Nutzers:
 {_profile_block(profile)}
 
-Garderobe des Nutzers (mit Stückzahlen):
-{_wardrobe_block(wardrobe)}
+Garderobe des Nutzers:
+{wardrobe_text}
 
 {history_block}
 
 Aktuelle Nachricht des Nutzers: {message}
 
 Antworte natürlich, freundlich und hilfreich auf Deutsch. Du kannst:
-- Outfit-Vorschläge aus der Garderobe machen
+- Outfit-Vorschläge aus der Garderobe machen (nenne Teile beim Namen, z.B. "dein blaues Hemd")
 - Styling-Tipps geben
 - Fragen zu Kleidungsstücken beantworten
 - Bei hochgeladenen Bildern: Outfit bewerten, Feedback geben
 - Allgemeine Mode-Fragen beantworten
+
+WICHTIG: Nenne Kleidungsstücke immer beim Namen oder Beschreibung (z.B. "blaues Hemd", "schwarze Chino"), 
+NIEMALS mit IDs oder Nummern!
 
 Sei ehrlich aber freundlich. Wenn etwas nicht passt, sag es konstruktiv.
 Antworte in 2-5 Sätzen, es sei denn mehr Detail ist nötig."""
