@@ -65,16 +65,41 @@ def _image_url(request: Request, item_id: int) -> str:
     return str(request.base_url).rstrip("/") + f"/api/items/{item_id}/image"
 
 
+def _thumbnail_url(request: Request, item_id: int) -> str:
+    return str(request.base_url).rstrip("/") + f"/api/items/{item_id}/thumbnail"
+
+
 def _extra_image_url(request: Request, image_id: int) -> str:
     return str(request.base_url).rstrip("/") + f"/api/item-images/{image_id}"
+
+
+def _extra_thumbnail_url(request: Request, image_id: int) -> str:
+    return str(request.base_url).rstrip("/") + f"/api/item-images/{image_id}/thumbnail"
+
+
+def _ai_image_url(request: Request, item_id: int) -> str:
+    return str(request.base_url).rstrip("/") + f"/api/items/{item_id}/ai-image"
+
+
+def _ai_thumbnail_url(request: Request, item_id: int) -> str:
+    return str(request.base_url).rstrip("/") + f"/api/items/{item_id}/ai-thumbnail"
 
 
 def _to_out(request: Request, item: models.ClothingItem) -> ItemOut:
     out = ItemOut.model_validate(item)
     out.image_url = _image_url(request, item.id)
+    out.thumbnail_url = _thumbnail_url(request, item.id)
     out.image_urls = [out.image_url] + [
         _extra_image_url(request, img.id) for img in (item.extra_images or [])
     ]
+    out.thumbnail_urls = [out.thumbnail_url] + [
+        _extra_thumbnail_url(request, img.id) for img in (item.extra_images or [])
+    ]
+    # KI-Produktfoto (nur wenn vorhanden)
+    if item.ai_image_data:
+        out.has_ai_image = True
+        out.ai_image_url = _ai_image_url(request, item.id)
+        out.ai_thumbnail_url = _ai_thumbnail_url(request, item.id)
     return out
 
 
@@ -522,6 +547,54 @@ async def analyze_detail(
     return data
 
 
+@app.post("/api/analyze/product-shot")
+async def analyze_product_shot(
+    payload: dict,
+    user: models.User = Depends(get_current_user),
+):
+    """Schritt 3 (optional): Erzeugt aus den Nutzerfotos ein sauberes KI-Produktfoto."""
+    raw_images = payload.get("images")
+    if not raw_images:
+        raw_images = [
+            {
+                "image_base64": payload.get("image_base64", ""),
+                "image_mime": payload.get("image_mime", "image/jpeg"),
+            }
+        ]
+
+    images: list[tuple[bytes, str]] = []
+    for entry in raw_images:
+        b64 = (entry or {}).get("image_base64", "")
+        if not b64:
+            continue
+        try:
+            images.append((base64.b64decode(b64), entry.get("image_mime") or "image/jpeg"))
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
+
+    if not images:
+        raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
+
+    try:
+        result = gemini_service.generate_product_shot(
+            images,
+            category=payload.get("category", ""),
+            color=payload.get("color", ""),
+            material=payload.get("material", ""),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
+
+    if not result:
+        raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
+
+    data, mime = result
+    return {
+        "ai_image_base64": base64.b64encode(data).decode(),
+        "ai_image_mime": mime,
+    }
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(
     file: UploadFile = File(...),
@@ -577,7 +650,18 @@ def create_item(
         quantity=max(1, payload.quantity),
         image_data=image_bytes,
         image_mime=payload.image_mime or "image/jpeg",
+        thumbnail_data=models._create_thumbnail(image_bytes),
     )
+
+    # Optionales KI-Produktfoto übernehmen
+    if payload.ai_image_base64:
+        try:
+            ai_bytes = base64.b64decode(payload.ai_image_base64)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="KI-Bilddaten ungueltig.")
+        item.ai_image_data = ai_bytes
+        item.ai_image_mime = payload.ai_image_mime or "image/png"
+        item.ai_thumbnail_data = models._create_thumbnail(ai_bytes)
 
     # Zusatzbilder (Futter, Etikett, Detailaufnahmen)
     for idx, extra in enumerate(payload.extra_images or []):
@@ -592,6 +676,7 @@ def create_item(
                 position=idx,
                 image_data=extra_bytes,
                 image_mime=extra.image_mime or "image/jpeg",
+                thumbnail_data=models._create_thumbnail(extra_bytes),
             )
         )
 
@@ -644,6 +729,22 @@ def get_item_image(
     return Response(content=item.image_data, media_type=item.image_mime)
 
 
+@app.get("/api/items/{item_id}/thumbnail")
+def get_item_thumbnail(
+    item_id: int,
+    db: Session = Depends(get_db),
+):
+    """Thumbnail als Binaerdaten für schnelleres Laden in Übersichten."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item nicht gefunden.")
+    # Fallback auf Vollbild wenn kein Thumbnail
+    data = item.thumbnail_data if item.thumbnail_data else item.image_data
+    if not data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    return Response(content=data, media_type="image/jpeg")
+
+
 @app.get("/api/item-images/{image_id}")
 def get_extra_image(
     image_id: int,
@@ -654,6 +755,110 @@ def get_extra_image(
     if not img or not img.image_data:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
     return Response(content=img.image_data, media_type=img.image_mime)
+
+
+@app.get("/api/item-images/{image_id}/thumbnail")
+def get_extra_thumbnail(
+    image_id: int,
+    db: Session = Depends(get_db),
+):
+    """Zusatzbild-Thumbnail für schnelleres Laden."""
+    img = db.get(models.ItemImage, image_id)
+    if not img:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    # Fallback auf Vollbild wenn kein Thumbnail
+    data = img.thumbnail_data if img.thumbnail_data else img.image_data
+    if not data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/items/{item_id}/ai-image")
+def get_ai_image(
+    item_id: int,
+    db: Session = Depends(get_db),
+):
+    """KI-generiertes Produktfoto (Vollauflösung)."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item or not item.ai_image_data:
+        raise HTTPException(status_code=404, detail="Kein KI-Bild vorhanden.")
+    return Response(content=item.ai_image_data, media_type=item.ai_image_mime or "image/png")
+
+
+@app.get("/api/items/{item_id}/ai-thumbnail")
+def get_ai_thumbnail(
+    item_id: int,
+    db: Session = Depends(get_db),
+):
+    """Thumbnail des KI-Produktfotos."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item nicht gefunden.")
+    data = item.ai_thumbnail_data if item.ai_thumbnail_data else item.ai_image_data
+    if not data:
+        raise HTTPException(status_code=404, detail="Kein KI-Bild vorhanden.")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.post("/api/items/{item_id}/generate-image", response_model=ItemOut)
+def generate_item_image(
+    item_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Erzeugt (oder erneuert) das KI-Produktfoto für ein bestehendes Teil.
+
+    Nutzt das Originalbild + alle Zusatzbilder als Referenz.
+    """
+    item = db.get(models.ClothingItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+
+    # Referenzbilder sammeln (Original zuerst, dann Zusatzbilder)
+    refs: list[tuple[bytes, str]] = [(item.image_data, item.image_mime or "image/jpeg")]
+    for extra in item.extra_images or []:
+        if extra.image_data:
+            refs.append((extra.image_data, extra.image_mime or "image/jpeg"))
+
+    try:
+        result = gemini_service.generate_product_shot(
+            refs,
+            category=item.category,
+            color=item.color,
+            material=item.material,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
+
+    if not result:
+        raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
+
+    data, mime = result
+    item.ai_image_data = data
+    item.ai_image_mime = mime
+    item.ai_thumbnail_data = models._create_thumbnail(data)
+    db.commit()
+    db.refresh(item)
+    return _to_out(request, item)
+
+
+@app.delete("/api/items/{item_id}/ai-image", response_model=ItemOut)
+def delete_ai_image(
+    item_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Entfernt das KI-Produktfoto wieder."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+    item.ai_image_data = None
+    item.ai_thumbnail_data = None
+    db.commit()
+    db.refresh(item)
+    return _to_out(request, item)
 
 
 @app.patch("/api/items/{item_id}/quantity", response_model=ItemOut)
@@ -706,6 +911,161 @@ def delete_item(
     if not item or item.user_id != user.id:
         raise HTTPException(status_code=404, detail="Nicht gefunden.")
     db.delete(item)
+    db.commit()
+    return {"status": "deleted"}
+
+
+def _item_reference_images(item: models.ClothingItem) -> list[tuple[bytes, str]]:
+    """Sammelt Original + Zusatzbilder eines Teils als (bytes, mime)-Liste."""
+    refs: list[tuple[bytes, str]] = []
+    if item.image_data:
+        refs.append((item.image_data, item.image_mime or "image/jpeg"))
+    for extra in item.extra_images or []:
+        if extra.image_data:
+            refs.append((extra.image_data, extra.image_mime or "image/jpeg"))
+    return refs
+
+
+@app.post("/api/items/{item_id}/reanalyze", response_model=ItemOut)
+def reanalyze_item(
+    item_id: int,
+    request: Request,
+    payload: dict | None = None,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Analysiert ein bestehendes Teil erneut anhand der gespeicherten Bilder.
+
+    Aktualisiert Metadaten + Details und erzeugt optional ein neues KI-Produktfoto.
+    """
+    item = db.get(models.ClothingItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+
+    refs = _item_reference_images(item)
+    if not refs:
+        raise HTTPException(status_code=400, detail="Keine Bilder zum Analysieren.")
+
+    regenerate_image = True
+    if payload and "regenerate_image" in payload:
+        regenerate_image = bool(payload.get("regenerate_image"))
+
+    # Schritt 1: Kategorie & Farbe
+    try:
+        quick = gemini_service.quick_analyze_image(refs)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
+
+    category = quick.get("category") or item.category
+
+    # Schritt 2: Details
+    try:
+        detail = gemini_service.detail_analyze_image(refs, category=category)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Detail-Analyse fehlgeschlagen: {exc}")
+
+    # Metadaten aktualisieren
+    item.category = category
+    item.color = quick.get("color") or item.color
+    item.name = detail.get("name") or item.name
+    item.material = detail.get("material") or item.material
+    item.pattern = detail.get("pattern") or item.pattern
+    item.style = detail.get("style") or item.style
+    item.occasion = detail.get("occasion") or item.occasion
+    item.season = detail.get("season") or item.season
+    item.description = detail.get("description") or item.description
+    new_details = detail.get("details") or {}
+    if new_details:
+        # bestehende Details mit neuen zusammenführen (neue gewinnen)
+        merged = dict(item.details or {})
+        merged.update(new_details)
+        item.details = merged
+
+    # Schritt 3: optional neues KI-Produktfoto
+    if regenerate_image:
+        try:
+            result = gemini_service.generate_product_shot(
+                refs,
+                category=item.category,
+                color=item.color,
+                material=item.material,
+            )
+            if result:
+                data, mime = result
+                item.ai_image_data = data
+                item.ai_image_mime = mime
+                item.ai_thumbnail_data = models._create_thumbnail(data)
+        except Exception:  # noqa: BLE001
+            pass  # KI-Foto ist optional
+
+    db.commit()
+    db.refresh(item)
+    return _to_out(request, item)
+
+
+@app.post("/api/items/{item_id}/images", response_model=ItemOut)
+def add_item_images(
+    item_id: int,
+    request: Request,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Fügt einem bestehenden Teil nachträglich weitere Bilder hinzu."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+
+    raw_images = payload.get("images") or []
+    if not raw_images:
+        raise HTTPException(status_code=400, detail="Keine Bilder empfangen.")
+
+    # Nächste Position bestimmen
+    existing = item.extra_images or []
+    next_pos = (max((e.position for e in existing), default=-1)) + 1
+
+    added = 0
+    for entry in raw_images:
+        b64 = (entry or {}).get("image_base64", "")
+        if not b64:
+            continue
+        try:
+            data = base64.b64decode(b64)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
+        item.extra_images.append(
+            models.ItemImage(
+                position=next_pos,
+                image_data=data,
+                image_mime=entry.get("image_mime") or "image/jpeg",
+                thumbnail_data=models._create_thumbnail(data),
+            )
+        )
+        next_pos += 1
+        added += 1
+
+    if not added:
+        raise HTTPException(status_code=400, detail="Keine gültigen Bilder.")
+
+    db.commit()
+    db.refresh(item)
+    return _to_out(request, item)
+
+
+@app.delete("/api/item-images/{image_id}")
+def delete_extra_image(
+    image_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Löscht ein einzelnes Zusatzbild."""
+    img = db.get(models.ItemImage, image_id)
+    if not img:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+    item = db.get(models.ClothingItem, img.item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+    db.delete(img)
     db.commit()
     return {"status": "deleted"}
 
@@ -839,6 +1199,60 @@ def generate_outfits_endpoint(
     
     return {"outfits": outfits}
 
+
+@app.post("/api/outfits/tryon")
+def outfit_tryon(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Generiert ein KI-Anprobe-Bild: eine Person, die das Outfit trägt.
+
+    Erwartet {"item_ids": [...], "occasion": "..."}. Kostet ~3-4 Cent pro Aufruf,
+    daher nur auf expliziten Wunsch (Button), nicht automatisch.
+    """
+    raw_ids = payload.get("item_ids") or []
+    occasion = payload.get("occasion", "")
+
+    item_ids: list[int] = []
+    for i in raw_ids:
+        try:
+            item_ids.append(int(i))
+        except (ValueError, TypeError):
+            continue
+
+    if not item_ids:
+        raise HTTPException(status_code=400, detail="Keine Teile angegeben.")
+
+    # Bevorzugt das Hauptbild jedes Teils als Referenz (max. ~10 Teile)
+    refs: list[tuple[bytes, str]] = []
+    labels: list[str] = []
+    for iid in item_ids[:10]:
+        it = db.get(models.ClothingItem, iid)
+        if not it or it.user_id != user.id or not it.image_data:
+            continue
+        refs.append((it.image_data, it.image_mime or "image/jpeg"))
+        label = it.name or it.category
+        if it.color:
+            label = f"{label} ({it.color})"
+        labels.append(label)
+
+    if not refs:
+        raise HTTPException(status_code=400, detail="Keine gültigen Teile gefunden.")
+
+    try:
+        result = gemini_service.generate_outfit_tryon(refs, labels, occasion)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Anprobe-Bild fehlgeschlagen: {exc}")
+
+    if not result:
+        raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
+
+    data, mime = result
+    return {
+        "image_base64": base64.b64encode(data).decode(),
+        "image_mime": mime,
+    }
 
 
 # ---------- Shopping ----------

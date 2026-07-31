@@ -168,16 +168,39 @@ def detail_analyze_image(
 
     prompt = f"""Du bist ein Mode-Experte. Analysiere dieses {category} im Detail.{multi_block}{hint_block}
 
+WICHTIG: Wenn ein Pflege-Etikett sichtbar ist, lies ALLE Informationen darauf:
+- Exakte Material-Zusammensetzung (z.B. "100% Baumwolle" oder "80% Wolle, 20% Polyester")
+- Waschtemperatur (z.B. "30°C", "40°C")
+- Pflegesymbole und Anweisungen (nicht bügeln, nicht bleichen, Handwäsche, etc.)
+- Bei Schuhen: Ledertyp, Obermaterial, Futtermaterial, Sohlenmaterial
+- Herstellungsland, wenn angegeben
+- Größenangaben auf dem Etikett
+
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
   "name": "kurzer sprechender Name, z.B. 'Blaues Leinenhemd'",
-  "material": "einer aus: {', '.join(MATERIALS[:15])}...",
+  "material": "exakte Material-Zusammensetzung vom Etikett oder geschätzt, z.B. '100% Baumwolle' oder 'Leder'",
   "pattern": "Muster/Textur, z.B. 'uni', 'gestreift', 'kariert'",
   "style": "einer aus: {', '.join(STYLES)}",
   "occasion": "einer aus: {', '.join(OCCASIONS[:10])}...",
   "season": "einer aus: {', '.join(SEASONS)}",
   "description": "ein kurzer deutscher Satz zum Stueck",
 {detail_prompt}
+  "care_instructions": {{
+    "wash_temp": "Waschtemperatur z.B. '30°C', '40°C', 'Handwäsche', 'nicht waschen', oder leer",
+    "dry": "Trockner-Anweisung z.B. 'Trockner niedrig', 'nicht Trockner', 'lufttrocknen', oder leer",
+    "iron": "Bügel-Anweisung z.B. 'niedrige Temperatur', 'mittlere Temperatur', 'nicht bügeln', oder leer",
+    "bleach": "'nicht bleichen' oder leer",
+    "dry_clean": "'chemische Reinigung' oder 'professionelle Reinigung' oder leer",
+    "special": "besondere Hinweise wie 'separat waschen', 'auf links waschen', etc. oder leer"
+  }},
+  "material_details": {{
+    "composition": "exakte Zusammensetzung vom Etikett z.B. '80% Wolle, 20% Polyamid' oder leer",
+    "leather_type": "bei Leder/Schuhen: Typ z.B. 'Glattleder', 'Wildleder', 'Nubukleder' oder leer",
+    "lining": "Futtermaterial z.B. '100% Polyester', 'Lederfutter' oder leer",
+    "sole": "bei Schuhen: Sohlenmaterial z.B. 'Gummisohle', 'Ledersohle' oder leer",
+    "origin": "Herstellungsland z.B. 'Made in Italy', 'Made in China' oder leer"
+  }}
 }}"""
 
     response = _call_with_retry(
@@ -187,6 +210,14 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
     data = _extract_json(response.text or "{}")
     details = data.pop("details", {}) if "details" in data else {}
+    care_instructions = data.pop("care_instructions", {}) if "care_instructions" in data else {}
+    material_details = data.pop("material_details", {}) if "material_details" in data else {}
+    
+    # Merge care and material details into details dict
+    if care_instructions and any(care_instructions.values()):
+        details["care_instructions"] = care_instructions
+    if material_details and any(material_details.values()):
+        details["material_details"] = material_details
 
     return {
         "name": str(data.get("name", "")),
@@ -240,6 +271,179 @@ Waehle immer den am besten passenden erlaubten Wert. Antworte nur mit dem JSON."
     allowed = {"name", "category", "color", "material", "pattern",
                "style", "occasion", "season", "description"}
     return {k: str(data.get(k, "")) for k in allowed}
+
+
+def generate_product_shot(
+    images: list[tuple[bytes, str]] | bytes,
+    category: str = "",
+    color: str = "",
+    material: str = "",
+    filename: str = "upload.jpg",
+) -> tuple[bytes, str] | None:
+    """Erzeugt aus den (oft schlampigen) Nutzerfotos ein sauberes, einheitliches
+    Studio-Produktfoto. Das Kleidungsstück wird NICHT verändert – nur die Szene,
+    Beleuchtung und der Hintergrund werden professionell gestaltet.
+
+    Gibt (bytes, mime) des generierten Bildes zurück oder None bei Fehler.
+    """
+    parts = _image_parts(images, filename)
+    if not parts:
+        return None
+
+    subject = category or "Kleidungsstück"
+    color_hint = f" in {color}" if color else ""
+    material_hint = f", Material: {material}" if material else ""
+
+    # Prompt: beschreibende, narrative Anweisung. Kernregel: Original exakt bewahren.
+    prompt = (
+        f"Erstelle ein professionelles, sauberes E-Commerce-Produktfoto dieses "
+        f"Kleidungsstücks ({subject}{color_hint}{material_hint}).\n\n"
+        "ABSOLUT WICHTIG – nichts verfälschen:\n"
+        "- Zeige EXAKT dasselbe Kleidungsstück wie auf den Referenzfotos: identische "
+        "Farbe, identisches Muster, identischer Schnitt, gleiche Knöpfe, Nähte, "
+        "Prints, Logos, Waschung und alle Details.\n"
+        "- Erfinde nichts dazu und lasse nichts weg. Verändere weder Farbton noch "
+        "Proportionen. Es muss zweifelsfrei dasselbe Teil sein.\n"
+        "- Behalte sichtbare Gebrauchsspuren nur dezent; keine neuen hinzufügen.\n\n"
+        "Bildgestaltung (nur Szene, nicht das Teil):\n"
+        "- Das Kleidungsstück sauber und faltenfrei präsentiert, mittig, komplett im Bild.\n"
+        "- Ghost-Mannequin / freigestellt schwebend, ODER flach sauber ausgelegt "
+        "(je nachdem was besser passt), KEIN Mensch, KEIN Gesicht.\n"
+        "- Gleichmäßiger, neutraler, sehr heller Hintergrund (weiß bis ganz leicht warmweiß).\n"
+        "- Weiches, professionelles Studiolicht, sanfte Schatten, keine harten Reflexe.\n"
+        "- Zentrierte Komposition, quadratischer Bildausschnitt, hochwertig und minimalistisch.\n"
+        "Gib nur das fertige Bild zurück."
+    )
+
+    client = _get_client()
+    last_exc: Exception | None = None
+    delay = _BASE_DELAY
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = client.models.generate_content(
+                model=settings.gemini_image_model,
+                contents=[*parts, prompt],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+            # Bild-Part aus der Antwort ziehen – robust ueber verschiedene SDK-Versionen
+            candidate_parts = []
+            # Variante 1: response.parts (neuere SDKs)
+            if getattr(response, "parts", None):
+                candidate_parts = response.parts
+            # Variante 2: response.candidates[0].content.parts
+            elif getattr(response, "candidates", None):
+                cand = response.candidates[0]
+                content = getattr(cand, "content", None)
+                if content is not None:
+                    candidate_parts = getattr(content, "parts", []) or []
+
+            for part in candidate_parts:
+                inline = getattr(part, "inline_data", None)
+                if inline is not None and getattr(inline, "data", None):
+                    mime = getattr(inline, "mime_type", None) or "image/png"
+                    return bytes(inline.data), mime
+            return None
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            msg = str(exc).lower()
+            is_retryable = (
+                "503" in msg or "429" in msg or "500" in msg
+                or "unavailable" in msg or "overloaded" in msg
+                or "high demand" in msg or "resource_exhausted" in msg
+                or "internal" in msg
+            )
+            if not is_retryable or attempt == _MAX_RETRIES - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
+
+    if last_exc:
+        raise last_exc
+    return None
+
+
+def generate_outfit_tryon(
+    item_images: list[tuple[bytes, str]],
+    piece_labels: list[str],
+    occasion: str = "",
+) -> tuple[bytes, str] | None:
+    """Erzeugt ein realistisches Foto einer Person, die das komplette Outfit trägt.
+
+    `item_images` sind die Referenzbilder der einzelnen Teile (je 1 pro Teil).
+    Gibt (bytes, mime) zurück oder None.
+    """
+    parts = _image_parts(item_images)
+    if not parts:
+        return None
+
+    pieces_text = ", ".join(piece_labels) if piece_labels else "die gezeigten Teile"
+    occ = f" für folgenden Anlass: {occasion}" if occasion else ""
+
+    prompt = (
+        "Erstelle ein realistisches, hochwertiges Ganzkörper-Modefoto einer Person, "
+        f"die dieses komplette Outfit trägt{occ}.\n\n"
+        f"Das Outfit besteht aus diesen Teilen (siehe Referenzbilder): {pieces_text}.\n\n"
+        "WICHTIG – Teile originalgetreu übernehmen:\n"
+        "- Jedes Kleidungsstück muss exakt so aussehen wie auf seinem Referenzbild: "
+        "gleiche Farbe, gleiches Muster, gleicher Schnitt, gleiche Details.\n"
+        "- Kombiniere alle gezeigten Teile zu einem stimmigen Look an einer Person.\n"
+        "- Erfinde keine zusätzlichen auffälligen Kleidungsstücke dazu.\n\n"
+        "Bildgestaltung:\n"
+        "- Natürlich wirkende Person in entspannter, selbstbewusster Pose, Ganzkörper.\n"
+        "- Neutrales, aufgeräumtes Studio- oder Lifestyle-Setting, weiches Licht.\n"
+        "- Modern, clean, wie ein Lookbook-Foto. Hochformat.\n"
+        "- Neutrales, freundliches Gesicht; keine bekannte reale Person darstellen.\n"
+        "Gib nur das fertige Bild zurück."
+    )
+
+    client = _get_client()
+    last_exc: Exception | None = None
+    delay = _BASE_DELAY
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            response = client.models.generate_content(
+                model=settings.gemini_image_model,
+                contents=[*parts, prompt],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+            candidate_parts = []
+            if getattr(response, "parts", None):
+                candidate_parts = response.parts
+            elif getattr(response, "candidates", None):
+                cand = response.candidates[0]
+                content = getattr(cand, "content", None)
+                if content is not None:
+                    candidate_parts = getattr(content, "parts", []) or []
+
+            for part in candidate_parts:
+                inline = getattr(part, "inline_data", None)
+                if inline is not None and getattr(inline, "data", None):
+                    mime = getattr(inline, "mime_type", None) or "image/png"
+                    return bytes(inline.data), mime
+            return None
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            msg = str(exc).lower()
+            is_retryable = (
+                "503" in msg or "429" in msg or "500" in msg
+                or "unavailable" in msg or "overloaded" in msg
+                or "high demand" in msg or "resource_exhausted" in msg
+                or "internal" in msg
+            )
+            if not is_retryable or attempt == _MAX_RETRIES - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
+
+    if last_exc:
+        raise last_exc
+    return None
 
 
 def recommend_outfit(

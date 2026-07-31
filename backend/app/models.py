@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from PIL import Image
+from io import BytesIO
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -8,6 +10,32 @@ from .database import Base
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _create_thumbnail(image_data: bytes, max_size: int = 400) -> bytes:
+    """Erstellt ein verkleinertes JPEG-Thumbnail aus den Bilddaten."""
+    try:
+        img = Image.open(BytesIO(image_data))
+        # RGB konvertieren (falls RGBA/PNG)
+        if img.mode in ("RGBA", "LA", "P"):
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            bg.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+            img = bg
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        
+        # Proportional verkleinern
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        
+        # Als JPEG mit moderater Qualität
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=75, optimize=True)
+        return buf.getvalue()
+    except Exception:
+        # Falls etwas schiefgeht, Original zurückgeben
+        return image_data
 
 
 class User(Base):
@@ -64,6 +92,13 @@ class ClothingItem(Base):
     # Bild direkt in der DB gespeichert
     image_data: Mapped[bytes] = mapped_column(LargeBinary)
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    # Thumbnail für schnelleres Laden in Übersichten
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+
+    # KI-generiertes Produktfoto (optional) + dessen Thumbnail
+    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
+    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -89,5 +124,7 @@ class ItemImage(Base):
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     image_data: Mapped[bytes] = mapped_column(LargeBinary)
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    # Thumbnail für schnelleres Laden
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
 
     item: Mapped["ClothingItem"] = relationship(back_populates="extra_images")

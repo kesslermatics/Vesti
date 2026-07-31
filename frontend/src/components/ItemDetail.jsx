@@ -1,55 +1,85 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { api } from "../api";
-import Modal from "./Modal";
+import { api, fileToBase64 } from "../api";
 import { SelectField, TextField } from "./Field";
 
+// ---- Bild-Galerie (KI-Foto zuerst, dann eigene Aufnahmen) ----
 function ImageGallery({ item }) {
-  const urls = item.image_urls?.length ? item.image_urls : [item.image_url];
+  const baseUrls = item.image_urls?.length ? item.image_urls : [item.image_url];
+  const baseThumbs = item.thumbnail_urls?.length
+    ? item.thumbnail_urls
+    : [item.thumbnail_url || item.image_url];
+
+  const urls = item.has_ai_image ? [item.ai_image_url, ...baseUrls] : baseUrls;
+  const thumbUrls = item.has_ai_image
+    ? [item.ai_thumbnail_url || item.ai_image_url, ...baseThumbs]
+    : baseThumbs;
+
   const [active, setActive] = useState(0);
+  useEffect(() => setActive(0), [item.id, urls.length]);
 
-  // Bei Item-Wechsel zurück auf das Hauptbild
-  useEffect(() => setActive(0), [item.id]);
-
-  const current = urls[Math.min(active, urls.length - 1)];
+  const idx = Math.min(active, urls.length - 1);
+  const current = urls[idx];
+  const isAiActive = item.has_ai_image && idx === 0;
 
   return (
-    <div className="mb-4">
-      <div className="relative rounded-2xl overflow-hidden bg-white">
+    <div>
+      <div className="relative rounded-3xl overflow-hidden bg-ink-900/5 aspect-square">
         <AnimatePresence mode="wait">
           <motion.img
             key={current}
             src={current}
             alt={item.name}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0, scale: 1.02 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="w-full aspect-[4/3] object-cover"
+            transition={{ duration: 0.2 }}
+            className="w-full h-full object-cover"
           />
         </AnimatePresence>
+        {isAiActive && (
+          <span className="absolute top-3 left-3 bg-clay-500/90 text-white text-[11px] font-medium rounded-full px-2.5 py-1 backdrop-blur-md shadow-sm">
+            ✨ KI-Produktfoto
+          </span>
+        )}
         {urls.length > 1 && (
-          <span className="absolute bottom-2 right-2 bg-ink-900/70 text-white text-xs rounded-full px-2 py-0.5 backdrop-blur-sm">
-            {Math.min(active, urls.length - 1) + 1}/{urls.length}
+          <span className="absolute bottom-3 right-3 bg-ink-900/50 text-white text-xs rounded-full px-2.5 py-1 backdrop-blur-md">
+            {idx + 1}/{urls.length}
           </span>
         )}
       </div>
 
       {urls.length > 1 && (
-        <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
-          {urls.map((url, idx) => (
+        <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+          {thumbUrls.map((t, i) => (
             <button
-              key={url}
-              onClick={() => setActive(idx)}
-              className={`h-16 w-16 flex-shrink-0 rounded-xl overflow-hidden transition ${
-                idx === active ? "ring-2 ring-clay-500" : "opacity-60 hover:opacity-100"
+              key={t}
+              onClick={() => setActive(i)}
+              className={`relative h-16 w-16 flex-shrink-0 rounded-2xl overflow-hidden transition ${
+                i === idx ? "ring-2 ring-clay-500" : "opacity-60 hover:opacity-100"
               }`}
             >
-              <img src={url} alt={`Ansicht ${idx + 1}`} className="w-full h-full object-cover" />
+              <img src={t} alt={`Ansicht ${i + 1}`} className="w-full h-full object-cover" />
+              {item.has_ai_image && i === 0 && (
+                <span className="absolute inset-x-0 bottom-0 bg-clay-500/80 text-white text-[8px] text-center leading-tight py-0.5">
+                  KI
+                </span>
+              )}
             </button>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---- kleine Glass-Karte ----
+function GlassCard({ children, className = "" }) {
+  return (
+    <div
+      className={`rounded-3xl border border-white/40 bg-white/60 backdrop-blur-xl shadow-[0_4px_30px_rgba(0,0,0,0.05)] ${className}`}
+    >
+      {children}
     </div>
   );
 }
@@ -62,6 +92,10 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
   const [error, setError] = useState("");
   const [qtyBusy, setQtyBusy] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [reanalyzeBusy, setReanalyzeBusy] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const fileRef = useRef(null);
 
   const open = Boolean(item);
 
@@ -88,6 +122,67 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
       setError(err.message || "Favorit konnte nicht geändert werden.");
     } finally {
       setFavBusy(false);
+    }
+  }
+
+  async function generateAiImage() {
+    setAiBusy(true);
+    setError("");
+    try {
+      const updated = await api.generateItemImage(item.id);
+      onUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || "KI-Foto konnte nicht erstellt werden.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function removeAiImage() {
+    setAiBusy(true);
+    setError("");
+    try {
+      const updated = await api.deleteAiImage(item.id);
+      onUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || "KI-Foto konnte nicht entfernt werden.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function reanalyze() {
+    setReanalyzeBusy(true);
+    setError("");
+    try {
+      const updated = await api.reanalyzeItem(item.id, true);
+      onUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || "Neue Analyse fehlgeschlagen.");
+    } finally {
+      setReanalyzeBusy(false);
+    }
+  }
+
+  async function addImages(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    setAddBusy(true);
+    setError("");
+    try {
+      const images = await Promise.all(
+        files.map(async (f) => ({
+          image_base64: await fileToBase64(f),
+          image_mime: f.type || "image/jpeg",
+        }))
+      );
+      const updated = await api.addItemImages(item.id, images);
+      onUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || "Bilder konnten nicht hinzugefügt werden.");
+    } finally {
+      setAddBusy(false);
     }
   }
 
@@ -123,196 +218,352 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
     onClose();
   }
 
+  const busy = aiBusy || reanalyzeBusy || addBusy;
+
   return (
-    <Modal open={open} onClose={handleClose}>
-      {item && (
-        <div className="p-5 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-ink-900">
-              {item.name || item.category}
-            </h2>
-            <button onClick={handleClose} className="text-ink-700/50 hover:text-ink-900 text-2xl leading-none">
-              ×
-            </button>
+    <AnimatePresence>
+      {open && item && (
+        <motion.div
+          className="fixed inset-0 z-50 flex flex-col"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          {/* Hintergrund mit unscharfem Item-Bild */}
+          <div className="absolute inset-0">
+            <img
+              src={item.thumbnail_url || item.image_url}
+              alt=""
+              className="w-full h-full object-cover scale-110 blur-2xl opacity-40"
+            />
+            <div className="absolute inset-0 bg-sand-50/80" />
           </div>
 
-          <ImageGallery item={item} />
-
-          <div className="flex flex-wrap gap-2 mb-4">
-            {[item.category, item.color, item.style, item.material, item.season, item.brand]
-              .filter(Boolean)
-              .map((tag, i) => (
-                <span key={i} className="text-xs bg-sand-100 text-ink-700 rounded-full px-3 py-1">
-                  {tag}
-                </span>
-              ))}
-          </div>
-
-          {/* Favoriten-Button */}
-          <button
-            onClick={toggleFav}
-            disabled={favBusy}
-            className="w-full flex items-center justify-center gap-2 bg-sand-100 hover:bg-sand-200 rounded-2xl px-4 py-3 mb-4 transition disabled:opacity-60"
+          {/* Ganzflächiges Sheet */}
+          <motion.div
+            className="relative flex-1 overflow-y-auto"
+            initial={{ y: 40, opacity: 0.5 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 40, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 32 }}
           >
-            <span className="text-xl">{item.favorite ? "⭐" : "☆"}</span>
-            <span className="text-sm font-medium text-ink-900">
-              {item.favorite ? "Favorit entfernen" : "Als Favorit markieren"}
-            </span>
-          </button>
-
-          {/* Stückzahl */}
-          <div className="flex items-center justify-between bg-sand-100 rounded-2xl px-4 py-3 mb-4">
-            <div>
-              <span className="text-sm font-medium text-ink-900">Stückzahl</span>
-              <p className="text-xs text-ink-700/50">
-                Wie viele davon besitzt du?
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
+            {/* Kopfleiste (sticky, glass) */}
+            <div
+              className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 bg-white/50 backdrop-blur-xl border-b border-white/40"
+              style={{ paddingTop: "max(env(safe-area-inset-top), 0.75rem)" }}
+            >
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-ink-900 truncate">
+                  {item.name || item.category}
+                </h2>
+                <p className="text-xs text-ink-700/50 truncate">{item.category}</p>
+              </div>
               <button
-                onClick={() => changeQty(-1)}
-                disabled={qtyBusy || (item.quantity || 1) <= 1}
-                aria-label="Weniger"
-                className="w-8 h-8 rounded-full bg-white text-ink-800 shadow-sm text-lg leading-none disabled:opacity-40 hover:bg-sand-50 transition"
+                onClick={handleClose}
+                className="flex-shrink-0 w-9 h-9 rounded-full bg-white/70 text-ink-800 flex items-center justify-center text-xl leading-none hover:bg-white transition"
+                aria-label="Schließen"
               >
-                −
-              </button>
-              <span className="w-8 text-center font-semibold text-ink-900">
-                {item.quantity || 1}
-              </span>
-              <button
-                onClick={() => changeQty(1)}
-                disabled={qtyBusy}
-                aria-label="Mehr"
-                className="w-8 h-8 rounded-full bg-white text-ink-800 shadow-sm text-lg leading-none disabled:opacity-40 hover:bg-sand-50 transition"
-              >
-                +
+                ×
               </button>
             </div>
-          </div>
 
-          {/* Spezifische Details */}
-          {item.details && Object.keys(item.details).length > 0 && (
-            <div className="mb-5">
-              <h3 className="text-xs font-semibold text-ink-700/70 uppercase tracking-wide mb-2">
-                Details
-              </h3>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                {Object.entries(item.details)
-                  .filter(([, v]) => v)
-                  .map(([k, v]) => (
-                    <div key={k} className="text-sm">
-                      <span className="text-ink-700/50 capitalize">
-                        {k.replace(/_/g, " ")}:{" "}
-                      </span>
-                      <span className="text-ink-900">{v}</span>
-                    </div>
+            <div className="max-w-lg mx-auto px-5 py-5 space-y-4">
+              <ImageGallery item={item} />
+
+              {/* Aktions-Reihe: Bilder hinzufügen + neue Analyse */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={busy}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/50 bg-white/60 backdrop-blur-xl px-4 py-3 text-sm font-medium text-ink-800 hover:bg-white/80 transition disabled:opacity-50"
+                >
+                  {addBusy ? (
+                    <Spinner tone="ink" />
+                  ) : (
+                    <span className="text-lg">📸</span>
+                  )}
+                  Bilder hinzufügen
+                </button>
+                <button
+                  onClick={reanalyze}
+                  disabled={busy}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-clay-500 text-white px-4 py-3 text-sm font-medium hover:bg-clay-600 transition disabled:opacity-50"
+                >
+                  {reanalyzeBusy ? (
+                    <Spinner tone="white" />
+                  ) : (
+                    <span className="text-lg">🔁</span>
+                  )}
+                  Neu analysieren
+                </button>
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={addImages}
+              />
+              {reanalyzeBusy && (
+                <p className="text-center text-xs text-ink-700/50">
+                  Vesti liest die Bilder neu aus, aktualisiert alle Details und erstellt ein frisches KI-Foto …
+                </p>
+              )}
+
+              {/* Tags */}
+              <div className="flex flex-wrap gap-2">
+                {[item.color, item.style, item.material, item.season, item.brand]
+                  .filter(Boolean)
+                  .map((tag, i) => (
+                    <span
+                      key={i}
+                      className="text-xs bg-white/60 backdrop-blur-md border border-white/40 text-ink-700 rounded-full px-3 py-1"
+                    >
+                      {tag}
+                    </span>
                   ))}
               </div>
-            </div>
-          )}
 
-          {!result && (
-            <div className="space-y-3">
-              <p className="text-sm text-ink-700/70">
-                Wofür möchtest du dieses Teil kombinieren? Vesti stellt ein Outfit aus deiner Garderobe zusammen.
-              </p>
-              <SelectField label="Anlass" value={occasion} onChange={setOccasion} options={meta.occasions} />
-              <TextField
-                label="Zusatzwunsch (optional)"
-                value={note}
-                onChange={setNote}
-                placeholder="z.B. wird kühl abends, eher dezent …"
-              />
-              <button
-                onClick={getRecommendation}
-                disabled={loading}
-                className="w-full rounded-xl bg-clay-500 text-white font-medium py-3 hover:bg-clay-600 active:scale-[0.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <motion.span
-                      className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-                    />
-                    Vesti stylt …
-                  </>
-                ) : (
-                  "✨ Outfit vorschlagen"
-                )}
-              </button>
-            </div>
-          )}
+              {/* KI-Produktfoto Steuerung */}
+              <GlassCard className="p-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={generateAiImage}
+                    disabled={busy}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-clay-500/10 hover:bg-clay-500/20 text-clay-600 px-4 py-3 transition disabled:opacity-60"
+                  >
+                    {aiBusy ? (
+                      <Spinner tone="clay" />
+                    ) : (
+                      <span className="text-lg">✨</span>
+                    )}
+                    <span className="text-sm font-medium">
+                      {item.has_ai_image ? "KI-Foto neu generieren" : "KI-Produktfoto erstellen"}
+                    </span>
+                  </button>
+                  {item.has_ai_image && !aiBusy && (
+                    <button
+                      onClick={removeAiImage}
+                      className="rounded-2xl bg-white/60 hover:bg-white/80 text-ink-700 px-4 py-3 text-sm font-medium transition"
+                      aria-label="KI-Foto entfernen"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
+              </GlassCard>
 
-          {error && (
-            <div className="mt-3 rounded-xl bg-clay-500/10 text-clay-600 text-sm px-3 py-2">
-              {error}
-            </div>
-          )}
-
-          {result && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-              {/* Tauglichkeits-Urteil */}
-              {(() => {
-                const cfg = {
-                  perfekt:    { bg: "bg-emerald-50",  text: "text-emerald-700", border: "border-emerald-200", icon: "✓" },
-                  geht:       { bg: "bg-sand-100",    text: "text-ink-700",     border: "border-sand-200",    icon: "~" },
-                  notlösung:  { bg: "bg-amber-50",    text: "text-amber-700",   border: "border-amber-200",   icon: "⚠" },
-                  ungeeignet: { bg: "bg-clay-500/10", text: "text-clay-700",    border: "border-clay-200",    icon: "✕" },
-                }[result.suitability] || cfg.geht;
-                return (
-                  <div className={`rounded-2xl border ${cfg.bg} ${cfg.border} px-4 py-3 flex gap-3 items-start`}>
-                    <span className={`text-lg font-bold ${cfg.text} shrink-0`}>{cfg.icon}</span>
-                    <div>
-                      <p className={`text-sm font-semibold capitalize ${cfg.text}`}>
-                        {result.suitability}
-                      </p>
-                      {result.suitability_reason && (
-                        <p className={`text-sm mt-0.5 ${cfg.text} opacity-80`}>
-                          {result.suitability_reason}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <h3 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
-                Dein Outfit
-              </h3>
-              <div className="grid grid-cols-3 gap-3">
-                {result.pieces.map((p) => (
-                  <div key={p.item_id} className="text-center">
-                    <img
-                      src={p.image_url}
-                      alt={p.name}
-                      className="w-full aspect-square object-cover rounded-xl shadow-soft"
-                    />
-                    <span className="mt-1 block text-xs text-ink-700/70 truncate">{p.name}</span>
-                  </div>
-                ))}
+              {/* Favorit + Stückzahl */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={toggleFav}
+                  disabled={favBusy}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/50 bg-white/60 backdrop-blur-xl px-4 py-3 transition hover:bg-white/80 disabled:opacity-60"
+                >
+                  <span className="text-lg">{item.favorite ? "⭐" : "☆"}</span>
+                  <span className="text-sm font-medium text-ink-900">
+                    {item.favorite ? "Favorit" : "Merken"}
+                  </span>
+                </button>
+                <div className="flex items-center justify-between rounded-2xl border border-white/50 bg-white/60 backdrop-blur-xl px-3 py-2">
+                  <button
+                    onClick={() => changeQty(-1)}
+                    disabled={qtyBusy || (item.quantity || 1) <= 1}
+                    className="w-8 h-8 rounded-full bg-white text-ink-800 shadow-sm text-lg leading-none disabled:opacity-40 hover:bg-sand-50 transition"
+                    aria-label="Weniger"
+                  >
+                    −
+                  </button>
+                  <span className="font-semibold text-ink-900">{item.quantity || 1}×</span>
+                  <button
+                    onClick={() => changeQty(1)}
+                    disabled={qtyBusy}
+                    className="w-8 h-8 rounded-full bg-white text-ink-800 shadow-sm text-lg leading-none disabled:opacity-40 hover:bg-sand-50 transition"
+                    aria-label="Mehr"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-              <div className="rounded-2xl bg-sand-100 p-4 text-sm text-ink-800 leading-relaxed">
-                {result.explanation}
-              </div>
-              <button
-                onClick={() => setResult(null)}
-                className="w-full rounded-xl border border-sand-200 text-ink-700 font-medium py-2.5 hover:bg-sand-100 transition"
-              >
-                Neuer Vorschlag
-              </button>
-            </motion.div>
-          )}
 
-          <button
-            onClick={remove}
-            className="mt-5 w-full text-center text-sm text-ink-700/50 hover:text-clay-600 transition"
-          >
-            Teil löschen
-          </button>
-        </div>
+              {/* Details */}
+              {item.details && Object.keys(item.details).length > 0 && (
+                <GlassCard className="p-4 space-y-3">
+                  <h3 className="text-xs font-semibold text-ink-700/70 uppercase tracking-wide">
+                    Details
+                  </h3>
+
+                  {Object.entries(item.details)
+                    .filter(([k, v]) => v && k !== "care_instructions" && k !== "material_details")
+                    .map(([k, v]) => (
+                      <div key={k} className="text-sm flex justify-between gap-3">
+                        <span className="text-ink-700/50 capitalize">{k.replace(/_/g, " ")}</span>
+                        <span className="text-ink-900 text-right">{v}</span>
+                      </div>
+                    ))}
+
+                  {item.details.material_details &&
+                    Object.values(item.details.material_details).some((v) => v) && (
+                      <div className="rounded-2xl bg-white/50 p-3 space-y-1.5">
+                        <div className="text-xs font-semibold text-ink-700/70 uppercase tracking-wide mb-1">
+                          📋 Material & Herkunft
+                        </div>
+                        {Object.entries(item.details.material_details)
+                          .filter(([, v]) => v)
+                          .map(([k, v]) => (
+                            <div key={k} className="text-sm flex justify-between gap-3">
+                              <span className="text-ink-700/60">
+                                {k === "composition" && "Zusammensetzung"}
+                                {k === "leather_type" && "Ledertyp"}
+                                {k === "lining" && "Futter"}
+                                {k === "sole" && "Sohle"}
+                                {k === "origin" && "Herkunft"}
+                              </span>
+                              <span className="text-ink-900 font-medium text-right">{v}</span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+
+                  {item.details.care_instructions &&
+                    Object.values(item.details.care_instructions).some((v) => v) && (
+                      <div className="rounded-2xl bg-clay-500/5 p-3 space-y-1.5">
+                        <div className="text-xs font-semibold text-clay-600 uppercase tracking-wide mb-1">
+                          🧺 Pflegehinweise
+                        </div>
+                        {Object.entries(item.details.care_instructions)
+                          .filter(([, v]) => v)
+                          .map(([k, v]) => (
+                            <div key={k} className="text-sm flex justify-between gap-3">
+                              <span className="text-ink-700/60">
+                                {k === "wash_temp" && "🌡️ Waschen"}
+                                {k === "dry" && "💨 Trocknen"}
+                                {k === "iron" && "🔥 Bügeln"}
+                                {k === "bleach" && "⚗️ Bleichen"}
+                                {k === "dry_clean" && "✨ Reinigung"}
+                                {k === "special" && "⚠️ Besonderes"}
+                              </span>
+                              <span className="text-ink-900 font-medium text-right">{v}</span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                </GlassCard>
+              )}
+
+              {error && (
+                <div className="rounded-2xl bg-clay-500/10 text-clay-600 text-sm px-3 py-2">
+                  {error}
+                </div>
+              )}
+
+              {/* Outfit-Empfehlung */}
+              {!result && (
+                <GlassCard className="p-4 space-y-3">
+                  <p className="text-sm text-ink-700/70">
+                    Wofür möchtest du dieses Teil kombinieren? Vesti stellt ein Outfit aus deiner Garderobe zusammen.
+                  </p>
+                  <SelectField label="Anlass" value={occasion} onChange={setOccasion} options={meta.occasions} />
+                  <TextField
+                    label="Zusatzwunsch (optional)"
+                    value={note}
+                    onChange={setNote}
+                    placeholder="z.B. wird kühl abends, eher dezent …"
+                  />
+                  <button
+                    onClick={getRecommendation}
+                    disabled={loading}
+                    className="w-full rounded-2xl bg-clay-500 text-white font-medium py-3 hover:bg-clay-600 active:scale-[0.99] transition disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <Spinner tone="white" />
+                        Vesti stylt …
+                      </>
+                    ) : (
+                      "✨ Outfit vorschlagen"
+                    )}
+                  </button>
+                </GlassCard>
+              )}
+
+              {result && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4"
+                >
+                  {(() => {
+                    const cfgMap = {
+                      perfekt: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", icon: "✓" },
+                      geht: { bg: "bg-sand-100", text: "text-ink-700", border: "border-sand-200", icon: "~" },
+                      notlösung: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", icon: "⚠" },
+                      ungeeignet: { bg: "bg-clay-500/10", text: "text-clay-700", border: "border-clay-200", icon: "✕" },
+                    };
+                    const cfg = cfgMap[result.suitability] || cfgMap.geht;
+                    return (
+                      <div className={`rounded-2xl border ${cfg.bg} ${cfg.border} px-4 py-3 flex gap-3 items-start`}>
+                        <span className={`text-lg font-bold ${cfg.text} shrink-0`}>{cfg.icon}</span>
+                        <div>
+                          <p className={`text-sm font-semibold capitalize ${cfg.text}`}>{result.suitability}</p>
+                          {result.suitability_reason && (
+                            <p className={`text-sm mt-0.5 ${cfg.text} opacity-80`}>{result.suitability_reason}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <h3 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">Dein Outfit</h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    {result.pieces.map((p) => (
+                      <div key={p.item_id} className="text-center">
+                        <img
+                          src={p.image_url}
+                          alt={p.name}
+                          className="w-full aspect-square object-cover rounded-2xl shadow-soft"
+                        />
+                        <span className="mt-1 block text-xs text-ink-700/70 truncate">{p.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <GlassCard className="p-4 text-sm text-ink-800 leading-relaxed">
+                    {result.explanation}
+                  </GlassCard>
+                  <button
+                    onClick={() => setResult(null)}
+                    className="w-full rounded-2xl border border-white/50 bg-white/60 backdrop-blur-xl text-ink-700 font-medium py-2.5 hover:bg-white/80 transition"
+                  >
+                    Neuer Vorschlag
+                  </button>
+                </motion.div>
+              )}
+
+              <button
+                onClick={remove}
+                className="w-full text-center text-sm text-ink-700/50 hover:text-clay-600 transition py-2"
+              >
+                Teil löschen
+              </button>
+
+              <div style={{ height: "env(safe-area-inset-bottom)" }} />
+            </div>
+          </motion.div>
+        </motion.div>
       )}
-    </Modal>
+    </AnimatePresence>
+  );
+}
+
+function Spinner({ tone = "white" }) {
+  const color =
+    tone === "white" ? "border-white" : tone === "clay" ? "border-clay-500" : "border-ink-700";
+  return (
+    <motion.span
+      className={`inline-block w-4 h-4 border-2 ${color} border-t-transparent rounded-full`}
+      animate={{ rotate: 360 }}
+      transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+    />
   );
 }

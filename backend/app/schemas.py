@@ -84,6 +84,9 @@ class ItemCreate(ItemMetadata):
     details: dict = {}
     # Weitere Aufnahmen (Futter, Etikett, Details)
     extra_images: list[ImageUpload] = []
+    # Optionales KI-generiertes Produktfoto (base64), falls im Wizard erzeugt
+    ai_image_base64: str = ""
+    ai_image_mime: str = "image/png"
 
 
 class ItemOut(ItemMetadata):
@@ -91,7 +94,13 @@ class ItemOut(ItemMetadata):
 
     id: int
     image_url: str = ""
+    thumbnail_url: str = ""
     image_urls: list[str] = []
+    thumbnail_urls: list[str] = []
+    # KI-Produktfoto
+    ai_image_url: str = ""
+    ai_thumbnail_url: str = ""
+    has_ai_image: bool = False
     details: dict = {}
     favorite: bool = False
     created_at: datetime

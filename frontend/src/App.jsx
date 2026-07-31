@@ -69,8 +69,17 @@ const VIEW_MODE = {
   LIST: "list",
 };
 
+// Wählt die passende Vorschau-URL je nach Bildquelle-Präferenz
+function pickThumb(item, useAiImages) {
+  if (useAiImages && item.has_ai_image) {
+    return item.ai_thumbnail_url || item.ai_image_url;
+  }
+  return item.thumbnail_url || item.image_url;
+}
+
 // Item Card Component
-function ItemCard({ item, onSelect, viewMode }) {
+function ItemCard({ item, onSelect, viewMode, useAiImages }) {
+  const thumb = pickThumb(item, useAiImages);
   if (viewMode === VIEW_MODE.GRID) {
     return (
       <motion.button
@@ -89,10 +98,15 @@ function ItemCard({ item, onSelect, viewMode }) {
         )}
         <div className="relative aspect-square rounded-2xl overflow-hidden bg-white shadow-soft">
           <img
-            src={item.image_url}
+            src={thumb}
             alt={item.name}
             className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
           />
+          {useAiImages && item.has_ai_image && (
+            <span className="absolute bottom-2 left-2 bg-clay-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
+              ✨ KI
+            </span>
+          )}
           {(item.quantity || 1) > 1 && (
             <span className="absolute top-2 right-2 bg-ink-900/80 text-white text-xs font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
               ×{item.quantity}
@@ -125,7 +139,7 @@ function ItemCard({ item, onSelect, viewMode }) {
       {/* Thumbnail */}
       <div className="relative w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden bg-sand-50">
         <img
-          src={item.image_url}
+          src={thumb}
           alt={item.name}
           className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
         />
@@ -171,6 +185,10 @@ export default function App() {
     const saved = localStorage.getItem("vesti-view-mode");
     return saved === VIEW_MODE.LIST ? VIEW_MODE.LIST : VIEW_MODE.GRID;
   });
+  const [useAiImages, setUseAiImages] = useState(() => {
+    // KI-Bilder oder eigene Fotos anzeigen
+    return localStorage.getItem("vesti-image-source") === "ai";
+  });
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -191,6 +209,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("vesti-view-mode", viewMode);
   }, [viewMode]);
+
+  // Save image source preference
+  useEffect(() => {
+    localStorage.setItem("vesti-image-source", useAiImages ? "ai" : "own");
+  }, [useAiImages]);
 
   // Beim Start: Token pruefen und Nutzer laden
   useEffect(() => {
@@ -415,8 +438,33 @@ export default function App() {
                     }} 
                   />
 
-                  {/* Toggle für Ansichtsmodus */}
-                  <div className="flex items-center justify-end mb-4">
+                  {/* Toggles: Bildquelle + Ansichtsmodus */}
+                  <div className="flex items-center justify-between gap-2 mb-4">
+                    {/* Bildquelle: eigene Fotos vs. KI-Produktfotos */}
+                    <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
+                      <button
+                        onClick={() => setUseAiImages(false)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                          !useAiImages
+                            ? "bg-white text-ink-900 shadow-sm"
+                            : "text-ink-700/60 hover:text-ink-900"
+                        }`}
+                      >
+                        <span className="mr-1">📷</span> Eigene
+                      </button>
+                      <button
+                        onClick={() => setUseAiImages(true)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                          useAiImages
+                            ? "bg-white text-ink-900 shadow-sm"
+                            : "text-ink-700/60 hover:text-ink-900"
+                        }`}
+                      >
+                        <span className="mr-1">✨</span> KI
+                      </button>
+                    </div>
+
+                    {/* Ansichtsmodus */}
                     <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
                       <button
                         onClick={() => setViewMode(VIEW_MODE.GRID)}
@@ -457,7 +505,7 @@ export default function App() {
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             <AnimatePresence>
                               {grouped.favorites.map((item) => (
-                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
+                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
                               ))}
                             </AnimatePresence>
                           </div>
@@ -467,7 +515,7 @@ export default function App() {
                           <div className="space-y-2">
                             <AnimatePresence>
                               {grouped.favorites.map((item) => (
-                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
+                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
                               ))}
                             </AnimatePresence>
                           </div>
@@ -496,7 +544,7 @@ export default function App() {
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                               <AnimatePresence>
                                 {group.items.map((item) => (
-                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
+                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
                                 ))}
                               </AnimatePresence>
                             </div>
@@ -507,7 +555,7 @@ export default function App() {
                             <div className="space-y-2">
                               <AnimatePresence>
                                 {group.items.map((item) => (
-                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
+                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
                                 ))}
                               </AnimatePresence>
                             </div>

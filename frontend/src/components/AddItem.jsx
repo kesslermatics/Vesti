@@ -25,10 +25,13 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
   const [step, setStep] = useState(STEP.CAPTURE);
   const [images, setImages] = useState([]); // [{ file, url, id }]
   const [hint, setHint] = useState("");
-  const [phase, setPhase] = useState(0); // 0 = Kategorie, 1 = Details
+  const [phase, setPhase] = useState(0); // 0 = Kategorie, 1 = Details, 2 = KI-Foto
   const [quickResult, setQuickResult] = useState(null);
   const [metadata, setMetadata] = useState(null);
   const [encoded, setEncoded] = useState([]); // vom Backend zurückgegebene base64-Bilder
+  const [aiImage, setAiImage] = useState(null); // { base64, mime }
+  const [regenerating, setRegenerating] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false); // Vorschau: Original vs. KI
   const [error, setError] = useState("");
   const [brands, setBrands] = useState({ mine: [], suggestions: [] });
   const [saving, setSaving] = useState(false);
@@ -54,6 +57,9 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
     setQuickResult(null);
     setMetadata(null);
     setEncoded([]);
+    setAiImage(null);
+    setRegenerating(false);
+    setShowOriginal(false);
     setError("");
     setSaving(false);
   }
@@ -135,6 +141,23 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
         brand: "",
         quantity: 1,
       });
+
+      // Phase 3: KI-Produktfoto generieren (optional, blockiert nicht)
+      setPhase(2);
+      try {
+        const shot = await api.analyzeProductShot({
+          images: imgs,
+          category: quick.category,
+          color: quick.color,
+          material: detail.material,
+        });
+        if (shot?.ai_image_base64) {
+          setAiImage({ base64: shot.ai_image_base64, mime: shot.ai_image_mime });
+        }
+      } catch {
+        // KI-Foto ist optional – bei Fehler einfach ohne weitermachen
+      }
+
       setStep(STEP.CONFIRM);
     } catch (err) {
       const msg = err.message || "";
@@ -151,6 +174,28 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
     setMetadata((m) => ({ ...m, [key]: val }));
   }
 
+  async function regenerateShot() {
+    if (!encoded.length || !metadata) return;
+    setRegenerating(true);
+    setError("");
+    try {
+      const shot = await api.analyzeProductShot({
+        images: encoded,
+        category: metadata.category,
+        color: metadata.color,
+        material: metadata.material,
+      });
+      if (shot?.ai_image_base64) {
+        setAiImage({ base64: shot.ai_image_base64, mime: shot.ai_image_mime });
+        setShowOriginal(false);
+      }
+    } catch (err) {
+      setError(err.message || "Bildgenerierung fehlgeschlagen.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   async function save() {
     setSaving(true);
     setError("");
@@ -161,6 +206,8 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
         image_base64: primary.image_base64,
         image_mime: primary.image_mime,
         extra_images: rest,
+        ai_image_base64: aiImage?.base64 || "",
+        ai_image_mime: aiImage?.mime || "image/png",
       });
       setStep(STEP.DONE);
       // Kurzer Erfolgs-Moment, dann schließen
@@ -175,7 +222,15 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
   }
 
   const progress =
-    step === STEP.CAPTURE ? 0.15 : step === STEP.ANALYZING ? (phase === 0 ? 0.45 : 0.75) : 1;
+    step === STEP.CAPTURE
+      ? 0.12
+      : step === STEP.ANALYZING
+      ? phase === 0
+        ? 0.35
+        : phase === 1
+        ? 0.6
+        : 0.85
+      : 1;
 
   return (
     <AnimatePresence>
@@ -415,8 +470,14 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                       />
                       <AnalysisRow
                         active={phase === 1}
-                        done={false}
+                        done={phase > 1}
                         label="Material, Schnitt & Details lesen"
+                        result={metadata ? `${metadata.material || "erkannt"}` : null}
+                      />
+                      <AnalysisRow
+                        active={phase === 2}
+                        done={false}
+                        label="Studio-Produktfoto erstellen"
                         result={null}
                       />
                     </div>
@@ -438,7 +499,77 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                     exit={{ opacity: 0, x: -20 }}
                     className="space-y-5"
                   >
-                    {/* Bild-Streifen */}
+                    {/* KI-Produktfoto Vorschau */}
+                    {aiImage && (
+                      <div className="space-y-2">
+                        <div className="relative rounded-2xl overflow-hidden bg-white shadow-soft">
+                          <AnimatePresence mode="wait">
+                            <motion.img
+                              key={showOriginal ? "orig" : "ai"}
+                              src={
+                                showOriginal
+                                  ? images[0]?.url
+                                  : `data:${aiImage.mime};base64,${aiImage.base64}`
+                              }
+                              alt={showOriginal ? "Original" : "KI-Produktfoto"}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: 0.18 }}
+                              className="w-full aspect-square object-cover"
+                            />
+                          </AnimatePresence>
+                          {regenerating && (
+                            <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+                              <motion.span
+                                className="inline-block w-6 h-6 border-2 border-clay-500 border-t-transparent rounded-full"
+                                animate={{ rotate: 360 }}
+                                transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                              />
+                              <span className="text-xs text-ink-700">Neu generieren …</span>
+                            </div>
+                          )}
+                          <span className="absolute top-2 left-2 bg-ink-900/70 text-white text-[10px] font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
+                            {showOriginal ? "📷 Dein Foto" : "✨ KI-Produktfoto"}
+                          </span>
+                        </div>
+
+                        {/* Umschalt- & Neu-Buttons */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 flex rounded-xl bg-sand-100 p-0.5 text-xs font-medium">
+                            <button
+                              onClick={() => setShowOriginal(false)}
+                              className={`flex-1 rounded-lg py-1.5 transition ${
+                                !showOriginal ? "bg-white shadow-sm text-ink-900" : "text-ink-700/60"
+                              }`}
+                            >
+                              ✨ KI-Foto
+                            </button>
+                            <button
+                              onClick={() => setShowOriginal(true)}
+                              className={`flex-1 rounded-lg py-1.5 transition ${
+                                showOriginal ? "bg-white shadow-sm text-ink-900" : "text-ink-700/60"
+                              }`}
+                            >
+                              📷 Original
+                            </button>
+                          </div>
+                          <button
+                            onClick={regenerateShot}
+                            disabled={regenerating}
+                            className="rounded-xl border border-sand-200 bg-white px-3 py-2 text-xs font-medium text-ink-700 hover:bg-sand-50 transition disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            <span className={regenerating ? "animate-spin" : ""}>🔄</span>
+                            Neu
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-ink-700/50 text-center">
+                          Das KI-Foto wird als Vorschau verwendet. Deine Originalfotos bleiben gespeichert.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Bild-Streifen (Originalaufnahmen) */}
                     <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                       {images.map((img, idx) => (
                         <img
@@ -451,6 +582,28 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                         />
                       ))}
                     </div>
+
+                    {/* Wenn kein KI-Foto erzeugt wurde: nachträglich anbieten */}
+                    {!aiImage && (
+                      <button
+                        onClick={regenerateShot}
+                        disabled={regenerating}
+                        className="w-full rounded-xl border border-dashed border-clay-400 bg-clay-500/5 px-4 py-3 text-sm font-medium text-clay-600 hover:bg-clay-500/10 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {regenerating ? (
+                          <>
+                            <motion.span
+                              className="inline-block w-4 h-4 border-2 border-clay-500 border-t-transparent rounded-full"
+                              animate={{ rotate: 360 }}
+                              transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                            />
+                            Studio-Foto wird erstellt …
+                          </>
+                        ) : (
+                          <>✨ Studio-Produktfoto generieren</>
+                        )}
+                      </button>
+                    )}
 
                     <div className="rounded-2xl bg-clay-500/8 px-4 py-3">
                       <p className="text-sm text-ink-800">
@@ -538,25 +691,90 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                       </div>
 
                       {metadata.details && Object.keys(metadata.details).length > 0 && (
-                        <div className="col-span-2 pt-3 border-t border-sand-200">
-                          <p className="text-xs font-medium text-ink-700/70 uppercase tracking-wide mb-3">
-                            Spezifische Details
+                        <div className="col-span-2 pt-3 border-t border-sand-200 space-y-3">
+                          <p className="text-xs font-medium text-ink-700/70 uppercase tracking-wide">
+                            Vom Etikett erkannt
                           </p>
-                          <div className="grid grid-cols-2 gap-3">
-                            {Object.entries(metadata.details).map(([key, value]) => (
-                              <TextField
-                                key={key}
-                                label={key.replace(/_/g, " ")}
-                                value={value || ""}
-                                onChange={(v) =>
-                                  setMetadata((m) => ({
-                                    ...m,
-                                    details: { ...m.details, [key]: v },
-                                  }))
-                                }
-                              />
-                            ))}
-                          </div>
+                          
+                          {/* Material-Details */}
+                          {metadata.details.material_details && Object.values(metadata.details.material_details).some(v => v) && (
+                            <div className="bg-sand-100 rounded-xl p-3 space-y-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-base">📋</span>
+                                <span className="text-xs font-semibold text-ink-700 uppercase tracking-wide">
+                                  Material & Herkunft
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                {Object.entries(metadata.details.material_details)
+                                  .filter(([, v]) => v)
+                                  .map(([k, v]) => (
+                                    <div key={k} className="flex justify-between text-sm">
+                                      <span className="text-ink-700/60 capitalize">
+                                        {k === "composition" && "Zusammensetzung"}
+                                        {k === "leather_type" && "Ledertyp"}
+                                        {k === "lining" && "Futter"}
+                                        {k === "sole" && "Sohle"}
+                                        {k === "origin" && "Herkunft"}
+                                      </span>
+                                      <span className="text-ink-900 font-medium text-right">{v}</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Pflegehinweise */}
+                          {metadata.details.care_instructions && Object.values(metadata.details.care_instructions).some(v => v) && (
+                            <div className="bg-clay-500/5 rounded-xl p-3 space-y-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-base">🧺</span>
+                                <span className="text-xs font-semibold text-clay-600 uppercase tracking-wide">
+                                  Pflegehinweise
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                {Object.entries(metadata.details.care_instructions)
+                                  .filter(([, v]) => v)
+                                  .map(([k, v]) => (
+                                    <div key={k} className="flex justify-between text-sm">
+                                      <span className="text-ink-700/60">
+                                        {k === "wash_temp" && "🌡️ Waschen"}
+                                        {k === "dry" && "💨 Trocknen"}
+                                        {k === "iron" && "🔥 Bügeln"}
+                                        {k === "bleach" && "⚗️ Bleichen"}
+                                        {k === "dry_clean" && "✨ Reinigung"}
+                                        {k === "special" && "⚠️ Besonderes"}
+                                      </span>
+                                      <span className="text-ink-900 font-medium text-right">{v}</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Sonstige Details (außer care/material) */}
+                          {Object.entries(metadata.details)
+                            .filter(([k]) => k !== "care_instructions" && k !== "material_details")
+                            .length > 0 && (
+                            <div className="grid grid-cols-2 gap-3">
+                              {Object.entries(metadata.details)
+                                .filter(([k]) => k !== "care_instructions" && k !== "material_details")
+                                .map(([key, value]) => (
+                                  <TextField
+                                    key={key}
+                                    label={key.replace(/_/g, " ")}
+                                    value={value || ""}
+                                    onChange={(v) =>
+                                      setMetadata((m) => ({
+                                        ...m,
+                                        details: { ...m.details, [key]: v },
+                                      }))
+                                    }
+                                  />
+                                ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

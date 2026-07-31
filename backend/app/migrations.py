@@ -19,6 +19,10 @@ EXPECTED_COLUMNS: dict[str, list[tuple[str, str, str, str | None]]] = {
         ("quantity", "INTEGER", "INTEGER", "1"),
         ("brand", "VARCHAR(120)", "VARCHAR(120)", "''"),
         ("favorite", "INTEGER", "INTEGER", "0"),
+        ("thumbnail_data", "BYTEA", "BLOB", None),
+        ("ai_image_data", "BYTEA", "BLOB", None),
+        ("ai_image_mime", "VARCHAR(60)", "VARCHAR(60)", "'image/png'"),
+        ("ai_thumbnail_data", "BYTEA", "BLOB", None),
     ],
     "users": [
         ("measurements", "JSONB", "JSON", "'{}'"),
@@ -26,6 +30,9 @@ EXPECTED_COLUMNS: dict[str, list[tuple[str, str, str, str | None]]] = {
         ("fit_preference", "VARCHAR(60)", "VARCHAR(60)", "''"),
         ("body_type", "VARCHAR(60)", "VARCHAR(60)", "''"),
         ("style_notes", "TEXT", "TEXT", "''"),
+    ],
+    "item_images": [
+        ("thumbnail_data", "BYTEA", "BLOB", None),
     ],
 }
 

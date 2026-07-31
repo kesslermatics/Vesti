@@ -3,6 +3,20 @@ const BASE = "https://backend-production-66df.up.railway.app";
 
 const TOKEN_KEY = "vesti_token";
 
+// Wandelt eine Datei in reines base64 (ohne data:-Prefix) um
+export function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result || "";
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export const auth = {
   get token() {
     return localStorage.getItem(TOKEN_KEY);
@@ -169,6 +183,73 @@ export const api = {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async analyzeProductShot(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/product-shot`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async generateItemImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/items/${id}/generate-image`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async deleteAiImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/items/${id}/ai-image`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async reanalyzeItem(id, regenerateImage = true) {
+    return handle(
+      await fetch(`${BASE}/api/items/${id}/reanalyze`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ regenerate_image: regenerateImage }),
+      })
+    );
+  },
+
+  async addItemImages(id, images) {
+    return handle(
+      await fetch(`${BASE}/api/items/${id}/images`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ images }),
+      })
+    );
+  },
+
+  async deleteItemImage(imageId) {
+    return handle(
+      await fetch(`${BASE}/api/item-images/${imageId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async outfitTryon(itemIds, occasion = "") {
+    return handle(
+      await fetch(`${BASE}/api/outfits/tryon`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ item_ids: itemIds, occasion }),
       })
     );
   },
