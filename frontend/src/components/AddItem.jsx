@@ -36,6 +36,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
   const [brands, setBrands] = useState({ mine: [], suggestions: [] });
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -372,20 +373,43 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                       </AnimatePresence>
 
                       {images.length < MAX_IMAGES && (
-                        <motion.button
+                        <motion.div
                           layout
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => fileRef.current?.click()}
-                          className="aspect-square rounded-2xl border-2 border-dashed border-sand-200 bg-white flex flex-col items-center justify-center gap-1 text-ink-700/50 hover:border-clay-400 hover:text-clay-500 transition"
+                          className="aspect-square rounded-2xl border-2 border-dashed border-sand-200 bg-white flex flex-col items-center justify-center gap-1.5 text-ink-700/50"
                         >
-                          <span className="text-2xl leading-none">＋</span>
-                          <span className="text-[11px] font-medium">
-                            {images.length === 0 ? "Foto" : "Weiteres"}
-                          </span>
-                        </motion.button>
+                          {/* Kamera direkt */}
+                          <motion.button
+                            whileTap={{ scale: 0.92 }}
+                            onClick={() => cameraRef.current?.click()}
+                            className="flex flex-col items-center gap-0.5 hover:text-clay-500 transition"
+                          >
+                            <span className="text-2xl leading-none">📷</span>
+                            <span className="text-[10px] font-medium">Kamera</span>
+                          </motion.button>
+                          <div className="w-px h-3 bg-sand-200" />
+                          {/* Galerie mit Mehrfachauswahl */}
+                          <motion.button
+                            whileTap={{ scale: 0.92 }}
+                            onClick={() => fileRef.current?.click()}
+                            className="flex flex-col items-center gap-0.5 hover:text-clay-500 transition"
+                          >
+                            <span className="text-2xl leading-none">🖼️</span>
+                            <span className="text-[10px] font-medium">Galerie</span>
+                          </motion.button>
+                        </motion.div>
                       )}
                     </div>
 
+                    {/* Kamera: capture öffnet direkt die Kamera, aber nur 1 Foto */}
+                    <input
+                      ref={cameraRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={addFiles}
+                    />
+                    {/* Galerie: multiple erlaubt Mehrfachauswahl */}
                     <input
                       ref={fileRef}
                       type="file"
