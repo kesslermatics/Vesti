@@ -205,6 +205,32 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
+
+  // Android/iOS Zurück-Button: Modal schließen statt App verlassen
+  useEffect(() => {
+    function onPopState() {
+      // Wenn ein Overlay offen ist, schließen — aber nicht aus der App raus
+      if (selected) {
+        setSelected(null);
+        return;
+      }
+      if (addOpen) {
+        setAddOpen(false);
+        return;
+      }
+      // Nichts offen → neuen State pushen damit nächster Zurück-Druck auch abgefangen wird
+      history.pushState({ overlay: false }, "");
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [selected, addOpen]);
+
+  // History-Entry pushen wenn ein Overlay öffnet, damit Zurück-Button es schließt
+  useEffect(() => {
+    if (selected || addOpen) {
+      history.pushState({ overlay: true }, "");
+    }
+  }, [selected, addOpen]);
   const [greeting, setGreeting] = useState(getRandomGreeting());
 
   // Neue Begrüßung beim Tab-Wechsel zur Garderobe
@@ -438,7 +464,7 @@ export default function App() {
                     meta={meta} 
                     onItemClick={(id) => {
                       const item = items.find(it => it.id === id);
-                      if (item) setSelected(item);
+                      if (item) openItem(item);
                     }} 
                   />
 
@@ -509,7 +535,7 @@ export default function App() {
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             <AnimatePresence>
                               {grouped.favorites.map((item) => (
-                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
+                                <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
                               ))}
                             </AnimatePresence>
                           </div>
@@ -519,7 +545,7 @@ export default function App() {
                           <div className="space-y-2">
                             <AnimatePresence>
                               {grouped.favorites.map((item) => (
-                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
+                                <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
                               ))}
                             </AnimatePresence>
                           </div>
@@ -548,7 +574,7 @@ export default function App() {
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                               <AnimatePresence>
                                 {group.items.map((item) => (
-                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
+                                  <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
                                 ))}
                               </AnimatePresence>
                             </div>
@@ -559,7 +585,7 @@ export default function App() {
                             <div className="space-y-2">
                               <AnimatePresence>
                                 {group.items.map((item) => (
-                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} useAiImages={useAiImages} />
+                                  <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
                                 ))}
                               </AnimatePresence>
                             </div>

@@ -880,6 +880,42 @@ def delete_ai_image(
     return _to_out(request, item)
 
 
+@app.patch("/api/items/{item_id}", response_model=ItemOut)
+def update_item(
+    item_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Aktualisiert editierbare Metadaten eines Kleidungsstücks."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+
+    updatable = {
+        "name", "category", "color", "material", "pattern",
+        "style", "occasion", "season", "description", "brand",
+    }
+    for field in updatable:
+        if field in payload:
+            setattr(item, field, str(payload[field] or ""))
+
+    # Details-Dict partiell mergen
+    if "details" in payload and isinstance(payload["details"], dict):
+        merged = dict(item.details or {})
+        merged.update(payload["details"])
+        item.details = merged
+
+    # Marke normalisieren
+    if item.brand:
+        item.brand = canonicalize(item.brand, _user_brands(db, user.id))
+
+    db.commit()
+    db.refresh(item)
+    return _to_out(request, item)
+
+
 @app.patch("/api/items/{item_id}/quantity", response_model=ItemOut)
 def update_quantity(
     item_id: int,

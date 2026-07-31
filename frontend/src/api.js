@@ -277,11 +277,21 @@ export const api = {
     );
   },
 
-  async deleteItem(id) {
+  async function deleteItem(id) {
     return handle(
       await fetch(`${BASE}/api/items/${id}`, {
         method: "DELETE",
         headers: authHeaders(),
+      })
+    );
+  },
+
+  async updateItem(id, payload) {
+    return handle(
+      await fetch(`${BASE}/api/items/${id}`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
       })
     );
   },

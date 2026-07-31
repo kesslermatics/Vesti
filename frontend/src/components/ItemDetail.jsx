@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api, fileToBase64 } from "../api";
-import { SelectField, TextField } from "./Field";
+import { GroupedSelectField, SelectField, TextField } from "./Field";
+import BrandField from "./BrandField";
 
 // ---- Bild-Galerie (KI-Foto zuerst, dann eigene Aufnahmen) ----
 function ImageGallery({ item }) {
@@ -106,9 +107,51 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
   const [addBusy, setAddBusy] = useState(false);
   const [tryonBusy, setTryonBusy] = useState(false);
   const [tryonImage, setTryonImage] = useState(null); // { base64, mime }
+  // Edit-Mode
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [brands, setBrands] = useState({ mine: [], suggestions: [] });
   const fileRef = useRef(null);
 
   const open = Boolean(item);
+
+  function startEdit() {
+    setEditData({
+      name: item.name || "",
+      category: item.category || "",
+      color: item.color || "",
+      material: item.material || "",
+      pattern: item.pattern || "",
+      style: item.style || "",
+      occasion: item.occasion || "",
+      season: item.season || "",
+      description: item.description || "",
+      brand: item.brand || "",
+    });
+    api.getBrands().then(setBrands).catch(() => {});
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setEditData(null);
+  }
+
+  async function saveEdit() {
+    setSaveBusy(true);
+    setError("");
+    try {
+      const updated = await api.updateItem(item.id, editData);
+      onUpdated?.(updated);
+      setEditing(false);
+      setEditData(null);
+    } catch (err) {
+      setError(err.message || "Speichern fehlgeschlagen.");
+    } finally {
+      setSaveBusy(false);
+    }
+  }
 
   async function changeQty(delta) {
     const next = Math.max(1, (item.quantity || 1) + delta);
@@ -247,6 +290,8 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
     setResult(null);
     setError("");
     setTryonImage(null);
+    setEditing(false);
+    setEditData(null);
     onClose();
   }
 
@@ -288,20 +333,96 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
             >
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold text-ink-900 truncate">
-                  {item.name || item.category}
+                  {editing ? "Bearbeiten" : (item.name || item.category)}
                 </h2>
                 <p className="text-xs text-ink-700/50 truncate">{item.category}</p>
               </div>
-              <button
-                onClick={handleClose}
-                className="flex-shrink-0 w-9 h-9 rounded-full bg-white/70 text-ink-800 flex items-center justify-center text-xl leading-none hover:bg-white transition"
-                aria-label="Schließen"
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {!editing && (
+                  <button
+                    onClick={startEdit}
+                    className="w-9 h-9 rounded-full bg-white/70 text-ink-800 flex items-center justify-center text-base leading-none hover:bg-white transition"
+                    aria-label="Bearbeiten"
+                  >
+                    ✏️
+                  </button>
+                )}
+                <button
+                  onClick={editing ? cancelEdit : handleClose}
+                  className="w-9 h-9 rounded-full bg-white/70 text-ink-800 flex items-center justify-center text-xl leading-none hover:bg-white transition"
+                  aria-label={editing ? "Abbrechen" : "Schließen"}
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             <div className="max-w-lg mx-auto px-5 py-5 space-y-4">
+
+              {/* ── Edit-Mode ── */}
+              {editing && editData && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4"
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <TextField label="Name" value={editData.name}
+                        onChange={(v) => setEditData((d) => ({ ...d, name: v }))} />
+                    </div>
+                    <GroupedSelectField label="Kategorie" value={editData.category}
+                      onChange={(v) => setEditData((d) => ({ ...d, category: v }))}
+                      groups={meta.category_groups} />
+                    <TextField label="Farbe" value={editData.color}
+                      onChange={(v) => setEditData((d) => ({ ...d, color: v }))} />
+                    <SelectField label="Material" value={editData.material}
+                      onChange={(v) => setEditData((d) => ({ ...d, material: v }))}
+                      options={meta.materials} />
+                    <TextField label="Muster / Textur" value={editData.pattern}
+                      onChange={(v) => setEditData((d) => ({ ...d, pattern: v }))} />
+                    <SelectField label="Stil" value={editData.style}
+                      onChange={(v) => setEditData((d) => ({ ...d, style: v }))}
+                      options={meta.styles} />
+                    <SelectField label="Anlass" value={editData.occasion}
+                      onChange={(v) => setEditData((d) => ({ ...d, occasion: v }))}
+                      options={meta.occasions} />
+                    <div className="col-span-2">
+                      <SelectField label="Jahreszeit" value={editData.season}
+                        onChange={(v) => setEditData((d) => ({ ...d, season: v }))}
+                        options={meta.seasons} />
+                    </div>
+                    <div className="col-span-2">
+                      <BrandField value={editData.brand}
+                        onChange={(v) => setEditData((d) => ({ ...d, brand: v }))}
+                        mine={brands.mine} suggestions={brands.suggestions} />
+                    </div>
+                    <div className="col-span-2">
+                      <TextField label="Beschreibung" value={editData.description}
+                        onChange={(v) => setEditData((d) => ({ ...d, description: v }))} />
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="rounded-2xl bg-clay-500/10 text-clay-600 text-sm px-3 py-2">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={saveEdit}
+                    disabled={saveBusy}
+                    className="w-full rounded-2xl bg-clay-500 text-white font-medium py-3 hover:bg-clay-600 transition disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {saveBusy ? <><Spinner tone="white" /> Speichern …</> : "✓ Speichern"}
+                  </button>
+
+                  <div style={{ height: "env(safe-area-inset-bottom)" }} />
+                </motion.div>
+              )}
+
+              {/* ── Normal-Mode ── */}
+              {!editing && (<>
               <ImageGallery item={item} />
 
               {/* Aktions-Reihe: Bilder hinzufügen + neue Analyse */}
@@ -622,6 +743,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
               </button>
 
               <div style={{ height: "env(safe-area-inset-bottom)" }} />
+            </>) /* end !editing */}
             </div>
           </motion.div>
         </motion.div>
