@@ -39,7 +39,7 @@ function ImageGallery({ item }) {
         </AnimatePresence>
         {isAiActive && (
           <span className="absolute top-3 left-3 bg-clay-500/90 text-white text-[11px] font-medium rounded-full px-2.5 py-1 backdrop-blur-md shadow-sm">
-            ✨ KI-Produktfoto
+            ✨ In Szene gesetzt
           </span>
         )}
         {urls.length > 1 && (
@@ -132,7 +132,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
       const updated = await api.generateItemImage(item.id);
       onUpdated?.(updated);
     } catch (err) {
-      setError(err.message || "KI-Foto konnte nicht erstellt werden.");
+      setError(err.message || "Bild konnte nicht in Szene gesetzt werden.");
     } finally {
       setAiBusy(false);
     }
@@ -145,7 +145,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
       const updated = await api.deleteAiImage(item.id);
       onUpdated?.(updated);
     } catch (err) {
-      setError(err.message || "KI-Foto konnte nicht entfernt werden.");
+      setError(err.message || "Bild konnte nicht entfernt werden.");
     } finally {
       setAiBusy(false);
     }
@@ -229,14 +229,16 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          {/* Hintergrund mit unscharfem Item-Bild */}
-          <div className="absolute inset-0">
+          {/* Deckender Hintergrund: erst Vollton, darüber das unscharfe Item-Bild */}
+          <div className="absolute inset-0 bg-sand-50" />
+          <div className="absolute inset-0 overflow-hidden">
             <img
               src={item.thumbnail_url || item.image_url}
               alt=""
-              className="w-full h-full object-cover scale-110 blur-2xl opacity-40"
+              className="w-full h-full object-cover scale-125 blur-3xl opacity-30"
             />
-            <div className="absolute inset-0 bg-sand-50/80" />
+            {/* sanfter Verlauf sorgt für Lesbarkeit und Tiefe */}
+            <div className="absolute inset-0 bg-gradient-to-b from-sand-50/70 via-sand-50/85 to-sand-50" />
           </div>
 
           {/* Ganzflächiges Sheet */}
@@ -307,7 +309,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
               />
               {reanalyzeBusy && (
                 <p className="text-center text-xs text-ink-700/50">
-                  Vesti liest die Bilder neu aus, aktualisiert alle Details und erstellt ein frisches KI-Foto …
+                  Vesti liest die Bilder neu aus, aktualisiert alle Details und setzt das Teil neu in Szene …
                 </p>
               )}
 
@@ -339,14 +341,14 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
                       <span className="text-lg">✨</span>
                     )}
                     <span className="text-sm font-medium">
-                      {item.has_ai_image ? "KI-Foto neu generieren" : "KI-Produktfoto erstellen"}
+                      {item.has_ai_image ? "Neu in Szene setzen" : "In Szene setzen"}
                     </span>
                   </button>
                   {item.has_ai_image && !aiBusy && (
                     <button
                       onClick={removeAiImage}
                       className="rounded-2xl bg-white/60 hover:bg-white/80 text-ink-700 px-4 py-3 text-sm font-medium transition"
-                      aria-label="KI-Foto entfernen"
+                      aria-label="Inszeniertes Bild entfernen"
                     >
                       🗑️
                     </button>

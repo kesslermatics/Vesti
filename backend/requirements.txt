@@ -5,7 +5,7 @@ pydantic==2.10.4
 pydantic[email]==2.10.4
 pydantic-settings==2.7.0
 python-multipart==0.0.20
-google-genai>=1.20.0
+google-genai==2.14.0
 pillow==11.1.0
 psycopg2-binary==2.9.10
 pyjwt==2.10.1

@@ -477,7 +477,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                       <AnalysisRow
                         active={phase === 2}
                         done={false}
-                        label="Studio-Produktfoto erstellen"
+                        label="Teil in Szene setzen"
                         result={null}
                       />
                     </div>
@@ -530,7 +530,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                             </div>
                           )}
                           <span className="absolute top-2 left-2 bg-ink-900/70 text-white text-[10px] font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
-                            {showOriginal ? "📷 Dein Foto" : "✨ KI-Produktfoto"}
+                            {showOriginal ? "📷 Dein Foto" : "✨ In Szene gesetzt"}
                           </span>
                         </div>
 
@@ -543,7 +543,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                                 !showOriginal ? "bg-white shadow-sm text-ink-900" : "text-ink-700/60"
                               }`}
                             >
-                              ✨ KI-Foto
+                              ✨ Inszeniert
                             </button>
                             <button
                               onClick={() => setShowOriginal(true)}
@@ -564,7 +564,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                           </button>
                         </div>
                         <p className="text-[11px] text-ink-700/50 text-center">
-                          Das KI-Foto wird als Vorschau verwendet. Deine Originalfotos bleiben gespeichert.
+                          Das inszenierte Bild wird als Vorschau verwendet. Deine Originalfotos bleiben gespeichert.
                         </p>
                       </div>
                     )}
@@ -597,10 +597,10 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
                               animate={{ rotate: 360 }}
                               transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
                             />
-                            Studio-Foto wird erstellt …
+                            Wird in Szene gesetzt …
                           </>
                         ) : (
-                          <>✨ Studio-Produktfoto generieren</>
+                          <>✨ Teil in Szene setzen</>
                         )}
                       </button>
                     )}

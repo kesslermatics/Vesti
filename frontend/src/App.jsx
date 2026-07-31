@@ -104,7 +104,7 @@ function ItemCard({ item, onSelect, viewMode, useAiImages }) {
           />
           {useAiImages && item.has_ai_image && (
             <span className="absolute bottom-2 left-2 bg-clay-500/90 text-white text-[10px] font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
-              ✨ KI
+              ✨ Inszeniert
             </span>
           )}
           {(item.quantity || 1) > 1 && (
@@ -460,7 +460,7 @@ export default function App() {
                             : "text-ink-700/60 hover:text-ink-900"
                         }`}
                       >
-                        <span className="mr-1">✨</span> KI
+                        <span className="mr-1">✨</span> Inszeniert
                       </button>
                     </div>
 

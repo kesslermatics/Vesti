@@ -21,6 +21,36 @@ _MAX_RETRIES = 4
 _BASE_DELAY = 2.0   # Sekunden, wird bei jedem Versuch verdoppelt
 
 
+class ImageGenerationUnavailable(Exception):
+    """Bildgenerierung ist am Server-Standort (Region) nicht verfügbar."""
+
+
+def _is_location_error(exc: Exception) -> bool:
+    """Erkennt geografische Beschränkungen der Bildgenerierung."""
+    msg = str(exc).lower()
+    return (
+        "not available in your country" in msg
+        or "user location is not supported" in msg
+        or "location is not supported" in msg
+        or ("failed_precondition" in msg and "location" in msg)
+    )
+
+
+def _extract_response_parts(response: Any) -> list[Any]:
+    """Extrahiert Parts robust aus einer Gemini-Antwort (SDK-versionsunabhaengig)."""
+    # Neuere SDKs: response.parts direkt
+    if getattr(response, "parts", None):
+        return list(response.parts)
+    # Aeltere SDKs: response.candidates[0].content.parts
+    candidates = getattr(response, "candidates", None)
+    if candidates:
+        cand = candidates[0]
+        content = getattr(cand, "content", None)
+        if content is not None:
+            return list(getattr(content, "parts", None) or [])
+    return []
+
+
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
@@ -325,21 +355,10 @@ def generate_product_shot(
                 model=settings.gemini_image_model,
                 contents=[*parts, prompt],
                 config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
+                    response_modalities=["TEXT", "IMAGE"],
                 ),
             )
-            # Bild-Part aus der Antwort ziehen – robust ueber verschiedene SDK-Versionen
-            candidate_parts = []
-            # Variante 1: response.parts (neuere SDKs)
-            if getattr(response, "parts", None):
-                candidate_parts = response.parts
-            # Variante 2: response.candidates[0].content.parts
-            elif getattr(response, "candidates", None):
-                cand = response.candidates[0]
-                content = getattr(cand, "content", None)
-                if content is not None:
-                    candidate_parts = getattr(content, "parts", []) or []
-
+            candidate_parts = _extract_response_parts(response)
             for part in candidate_parts:
                 inline = getattr(part, "inline_data", None)
                 if inline is not None and getattr(inline, "data", None):
@@ -348,6 +367,8 @@ def generate_product_shot(
             return None
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            if _is_location_error(exc):
+                raise  # sofort abbrechen, kein Retry
             msg = str(exc).lower()
             is_retryable = (
                 "503" in msg or "429" in msg or "500" in msg
@@ -409,18 +430,10 @@ def generate_outfit_tryon(
                 model=settings.gemini_image_model,
                 contents=[*parts, prompt],
                 config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
+                    response_modalities=["TEXT", "IMAGE"],
                 ),
             )
-            candidate_parts = []
-            if getattr(response, "parts", None):
-                candidate_parts = response.parts
-            elif getattr(response, "candidates", None):
-                cand = response.candidates[0]
-                content = getattr(cand, "content", None)
-                if content is not None:
-                    candidate_parts = getattr(content, "parts", []) or []
-
+            candidate_parts = _extract_response_parts(response)
             for part in candidate_parts:
                 inline = getattr(part, "inline_data", None)
                 if inline is not None and getattr(inline, "data", None):
@@ -429,6 +442,8 @@ def generate_outfit_tryon(
             return None
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            if _is_location_error(exc):
+                raise  # sofort abbrechen, kein Retry
             msg = str(exc).lower()
             is_retryable = (
                 "503" in msg or "429" in msg or "500" in msg

@@ -61,6 +61,21 @@ app.add_middleware(
 )
 
 
+_LOCATION_HINT = (
+    "Die Bildgenerierung ist an diesem Server-Standort nicht verfügbar. "
+    "Das liegt an Googles regionalen Beschränkungen für die Bild-KI – nicht an deinem Standort. "
+    "Abhilfe: ein Billing-Konto beim Gemini-API-Key hinterlegen oder das Backend in einer "
+    "US-Region betreiben."
+)
+
+
+def _raise_image_error(exc: Exception) -> None:
+    """Wandelt einen Bildgenerierungs-Fehler in eine verständliche HTTP-Antwort um."""
+    if gemini_service._is_location_error(exc):
+        raise HTTPException(status_code=451, detail=_LOCATION_HINT)
+    raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
+
+
 def _image_url(request: Request, item_id: int) -> str:
     return str(request.base_url).rstrip("/") + f"/api/items/{item_id}/image"
 
@@ -582,8 +597,10 @@ async def analyze_product_shot(
             color=payload.get("color", ""),
             material=payload.get("material", ""),
         )
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
+        _raise_image_error(exc)
 
     if not result:
         raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
@@ -828,8 +845,10 @@ def generate_item_image(
             color=item.color,
             material=item.material,
         )
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
+        _raise_image_error(exc)
 
     if not result:
         raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
@@ -1242,8 +1261,10 @@ def outfit_tryon(
 
     try:
         result = gemini_service.generate_outfit_tryon(refs, labels, occasion)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Anprobe-Bild fehlgeschlagen: {exc}")
+        _raise_image_error(exc)
 
     if not result:
         raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
