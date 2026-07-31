@@ -27,10 +27,140 @@ const TABS = [
   { id: TAB.PROFILE, label: "Profil", icon: "👤" },
 ];
 
+const GREETINGS = [
+  "Schön siehst du heute aus ✨",
+  "Lass uns was Geiles stylen 🔥",
+  "Bereit für deinen perfekten Look? 👔",
+  "Zeit für Style-Inspiration 💫",
+  "Dein Outfit wartet auf dich 🎨",
+  "Heute wird stylisch 😎",
+  "Let's create magic ✨",
+  "Fashion-Time! 🌟",
+  "Deine Garderobe glänzt heute 💎",
+  "Bereit, alle Blicke auf dich zu ziehen? 👀",
+  "Style ist deine Superkraft 🦸",
+  "Heute wird legendär 🔥",
+  "Mach dich ready für Komplimente 💬",
+  "Dein Style, deine Regeln 👑",
+  "Outfit-Perfektion incoming 🎯",
+  "Zeit zu glänzen ✨",
+  "Fashion never sleeps 🌙",
+  "Stylen wir was Krasses? 💥",
+  "Du bist der Main Character 🎬",
+  "Heute: Next-Level-Style 📈",
+  "Outfit-Game: Strong 💪",
+  "Style-Mode: Activated 🚀",
+  "Look good, feel good 😌",
+  "Dein Vibe ist unmatched 🌊",
+  "Fresh dressed like a million bucks 💸",
+  "Kleiderschrank-Magie beginnt 🪄",
+  "Style on point, immer 🎯",
+  "Heute wird fire 🔥",
+  "Dein Look, deine Story 📖",
+  "Bereit für deinen Signature-Style? ✍️",
+];
+
+function getRandomGreeting() {
+  return GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+}
+
 const VIEW_MODE = {
   GRID: "grid",
   LIST: "list",
 };
+
+// Item Card Component
+function ItemCard({ item, onSelect, viewMode }) {
+  if (viewMode === VIEW_MODE.GRID) {
+    return (
+      <motion.button
+        layout
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={() => onSelect(item)}
+        className="group text-left relative"
+      >
+        {item.favorite && (
+          <div className="absolute top-2 left-2 z-10 bg-amber-400 rounded-full w-6 h-6 flex items-center justify-center shadow-sm">
+            <span className="text-sm">⭐</span>
+          </div>
+        )}
+        <div className="relative aspect-square rounded-2xl overflow-hidden bg-white shadow-soft">
+          <img
+            src={item.image_url}
+            alt={item.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+          />
+          {(item.quantity || 1) > 1 && (
+            <span className="absolute top-2 right-2 bg-ink-900/80 text-white text-xs font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
+              ×{item.quantity}
+            </span>
+          )}
+        </div>
+        <span className="mt-1.5 block text-sm text-ink-800 truncate">
+          {item.name || item.category}
+        </span>
+        {item.color && (
+          <span className="block text-xs text-ink-700/50 truncate">
+            {item.color}
+          </span>
+        )}
+      </motion.button>
+    );
+  }
+
+  // List view
+  return (
+    <motion.button
+      layout
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 10 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={() => onSelect(item)}
+      className="w-full group text-left bg-white rounded-xl p-3 shadow-soft hover:shadow-md transition flex items-center gap-3"
+    >
+      {/* Thumbnail */}
+      <div className="relative w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden bg-sand-50">
+        <img
+          src={item.image_url}
+          alt={item.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+        />
+        {item.favorite && (
+          <div className="absolute top-0.5 left-0.5 bg-amber-400 rounded-full w-4 h-4 flex items-center justify-center">
+            <span className="text-[10px]">⭐</span>
+          </div>
+        )}
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className="font-medium text-ink-900 truncate">
+            {item.name || item.category}
+          </span>
+          {(item.quantity || 1) > 1 && (
+            <span className="text-xs text-ink-700/50 flex-shrink-0">
+              ×{item.quantity}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-ink-700/50">
+          {item.color && <span>{item.color}</span>}
+          {item.color && item.brand && <span>·</span>}
+          {item.brand && <span>{item.brand}</span>}
+          {(item.color || item.brand) && item.material && <span>·</span>}
+          {item.material && <span>{item.material}</span>}
+        </div>
+      </div>
+      <span className="text-ink-700/30 group-hover:text-ink-700/60 transition">
+        →
+      </span>
+    </motion.button>
+  );
+}
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -48,6 +178,14 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
   const [toastMessage, setToastMessage] = useState("");
+  const [greeting, setGreeting] = useState(getRandomGreeting());
+
+  // Neue Begrüßung beim Tab-Wechsel zur Garderobe
+  useEffect(() => {
+    if (tab === TAB.WARDROBE) {
+      setGreeting(getRandomGreeting());
+    }
+  }, [tab]);
 
   // Save view mode to localStorage when it changes
   useEffect(() => {
@@ -104,19 +242,45 @@ export default function App() {
     setTab(TAB.WARDROBE);
   }, []);
 
-  // Nach Kategorie gruppieren, in der Reihenfolge der Meta-Kategorien
+  // Nach Kategorie-Gruppen gruppieren (intelligent sortiert)
+  // Sortierung: neu → alt (created_at DESC)
   const grouped = useMemo(() => {
-    if (!meta) return [];
-    const map = new Map();
-    for (const it of items) {
-      if (!map.has(it.category)) map.set(it.category, []);
-      map.get(it.category).push(it);
-    }
-    const order = meta.categories;
-    const sortedKeys = [...map.keys()].sort(
-      (a, b) => order.indexOf(a) - order.indexOf(b)
+    if (!meta) return { favorites: [], groups: [] };
+    
+    // Sortiere Items: neueste zuerst
+    const sortedItems = [...items].sort((a, b) => 
+      new Date(b.created_at) - new Date(a.created_at)
     );
-    return sortedKeys.map((cat) => ({ category: cat, items: map.get(cat) }));
+    
+    // Trenne Favoriten
+    const favorites = sortedItems.filter(it => it.favorite);
+    const nonFavorites = sortedItems.filter(it => !it.favorite);
+    
+    // Gruppiere nach Meta-Gruppen (z.B. "Oberteile", "Schuhe", etc.)
+    const groupMap = new Map();
+    
+    for (const item of nonFavorites) {
+      // Finde die Gruppe für diese Kategorie
+      const metaGroup = meta.category_groups.find(g => 
+        g.items.includes(item.category)
+      );
+      const groupName = metaGroup ? metaGroup.group : "Sonstiges";
+      
+      if (!groupMap.has(groupName)) {
+        groupMap.set(groupName, []);
+      }
+      groupMap.get(groupName).push(item);
+    }
+    
+    // Konvertiere zu Array in der Reihenfolge der Meta-Gruppen
+    const groups = meta.category_groups
+      .filter(g => groupMap.has(g.group))
+      .map(g => ({
+        group: g.group,
+        items: groupMap.get(g.group)
+      }));
+    
+    return { favorites, groups };
   }, [items, meta]);
 
   // Gesamtzahl inkl. Stückzahlen
@@ -182,7 +346,7 @@ export default function App() {
             <h1 className="text-2xl font-bold tracking-tight text-ink-900">Vesti</h1>
             <p className="text-xs text-ink-700/60">
               {tab === TAB.WARDROBE
-                ? `${totalPieces} Teile in deiner Garderobe`
+                ? greeting
                 : user.name
                 ? `Hallo, ${user.name}`
                 : "Deine digitale Garderobe"}
@@ -278,16 +442,50 @@ export default function App() {
                   </div>
 
                   <div className="space-y-8">
-                    {grouped.map((group) => {
+                    {/* Favoriten-Sektion */}
+                    {grouped.favorites && grouped.favorites.length > 0 && (
+                      <section>
+                        <div className="flex items-center gap-3 mb-3">
+                          <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
+                            ⭐ Favoriten
+                          </h2>
+                          <span className="text-xs text-ink-700/40">{grouped.favorites.length}</span>
+                          <div className="flex-1 h-px bg-sand-100" />
+                        </div>
+
+                        {viewMode === VIEW_MODE.GRID && (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <AnimatePresence>
+                              {grouped.favorites.map((item) => (
+                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
+                              ))}
+                            </AnimatePresence>
+                          </div>
+                        )}
+
+                        {viewMode === VIEW_MODE.LIST && (
+                          <div className="space-y-2">
+                            <AnimatePresence>
+                              {grouped.favorites.map((item) => (
+                                <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
+                              ))}
+                            </AnimatePresence>
+                          </div>
+                        )}
+                      </section>
+                    )}
+
+                    {/* Kategorien-Gruppen */}
+                    {grouped.groups.map((group) => {
                       const groupTotal = group.items.reduce(
                         (s, i) => s + (i.quantity || 1),
                         0
                       );
                       return (
-                        <section key={group.category}>
+                        <section key={group.group}>
                           <div className="flex items-center gap-3 mb-3">
                             <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
-                              {group.category}
+                              {group.group}
                             </h2>
                             <span className="text-xs text-ink-700/40">{groupTotal}</span>
                             <div className="flex-1 h-px bg-sand-100" />
@@ -298,37 +496,7 @@ export default function App() {
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                               <AnimatePresence>
                                 {group.items.map((item) => (
-                                  <motion.button
-                                    key={item.id}
-                                    layout
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.9 }}
-                                    whileTap={{ scale: 0.97 }}
-                                    onClick={() => setSelected(item)}
-                                    className="group text-left"
-                                  >
-                                    <div className="relative aspect-square rounded-2xl overflow-hidden bg-white shadow-soft">
-                                      <img
-                                        src={item.image_url}
-                                        alt={item.name}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                                      />
-                                      {(item.quantity || 1) > 1 && (
-                                        <span className="absolute top-2 right-2 bg-ink-900/80 text-white text-xs font-medium rounded-full px-2 py-0.5 backdrop-blur-sm">
-                                          ×{item.quantity}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <span className="mt-1.5 block text-sm text-ink-800 truncate">
-                                      {item.name || item.category}
-                                    </span>
-                                    {item.color && (
-                                      <span className="block text-xs text-ink-700/50 truncate">
-                                        {item.color}
-                                      </span>
-                                    )}
-                                  </motion.button>
+                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
                                 ))}
                               </AnimatePresence>
                             </div>
@@ -339,39 +507,7 @@ export default function App() {
                             <div className="space-y-2">
                               <AnimatePresence>
                                 {group.items.map((item) => (
-                                  <motion.button
-                                    key={item.id}
-                                    layout
-                                    initial={{ opacity: 0, x: -10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: 10 }}
-                                    whileTap={{ scale: 0.98 }}
-                                    onClick={() => setSelected(item)}
-                                    className="w-full group text-left bg-white rounded-xl p-3 shadow-soft hover:shadow-md transition flex items-center gap-3"
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-baseline gap-2">
-                                        <span className="font-medium text-ink-900 truncate">
-                                          {item.name || item.category}
-                                        </span>
-                                        {(item.quantity || 1) > 1 && (
-                                          <span className="text-xs text-ink-700/50 flex-shrink-0">
-                                            ×{item.quantity}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-2 mt-0.5 text-xs text-ink-700/50">
-                                        {item.color && <span>{item.color}</span>}
-                                        {item.color && item.brand && <span>·</span>}
-                                        {item.brand && <span>{item.brand}</span>}
-                                        {(item.color || item.brand) && item.material && <span>·</span>}
-                                        {item.material && <span>{item.material}</span>}
-                                      </div>
-                                    </div>
-                                    <span className="text-ink-700/30 group-hover:text-ink-700/60 transition">
-                                      →
-                                    </span>
-                                  </motion.button>
+                                  <ItemCard key={item.id} item={item} onSelect={setSelected} viewMode={viewMode} />
                                 ))}
                               </AnimatePresence>
                             </div>

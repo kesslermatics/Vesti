@@ -58,6 +58,8 @@ class ClothingItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # Marke (optional, hilft der KI)
     brand: Mapped[str] = mapped_column(String(120), default="")
+    # Favorit-Flag
+    favorite: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
 
     # Bild direkt in der DB gespeichert
     image_data: Mapped[bytes] = mapped_column(LargeBinary)

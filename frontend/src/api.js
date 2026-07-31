@@ -134,6 +134,16 @@ export const api = {
     );
   },
 
+  async toggleFavorite(id, favorite) {
+    return handle(
+      await fetch(`${BASE}/api/items/${id}/favorite`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ favorite }),
+      })
+    );
+  },
+
   // ---- Items ----
   async listItems() {
     return handle(await fetch(`${BASE}/api/items`, { headers: authHeaders() }));

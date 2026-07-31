@@ -18,6 +18,7 @@ EXPECTED_COLUMNS: dict[str, list[tuple[str, str, str, str | None]]] = {
         ("details", "JSONB", "JSON", "'{}'"),
         ("quantity", "INTEGER", "INTEGER", "1"),
         ("brand", "VARCHAR(120)", "VARCHAR(120)", "''"),
+        ("favorite", "INTEGER", "INTEGER", "0"),
     ],
     "users": [
         ("measurements", "JSONB", "JSON", "'{}'"),

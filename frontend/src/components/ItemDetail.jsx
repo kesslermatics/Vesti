@@ -11,6 +11,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [qtyBusy, setQtyBusy] = useState(false);
+  const [favBusy, setFavBusy] = useState(false);
 
   const open = Boolean(item);
 
@@ -25,6 +26,18 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
       setError(err.message || "Stückzahl konnte nicht geändert werden.");
     } finally {
       setQtyBusy(false);
+    }
+  }
+
+  async function toggleFav() {
+    setFavBusy(true);
+    try {
+      const updated = await api.toggleFavorite(item.id, !item.favorite);
+      onUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || "Favorit konnte nicht geändert werden.");
+    } finally {
+      setFavBusy(false);
     }
   }
 
@@ -88,6 +101,18 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
                 </span>
               ))}
           </div>
+
+          {/* Favoriten-Button */}
+          <button
+            onClick={toggleFav}
+            disabled={favBusy}
+            className="w-full flex items-center justify-center gap-2 bg-sand-100 hover:bg-sand-200 rounded-2xl px-4 py-3 mb-4 transition disabled:opacity-60"
+          >
+            <span className="text-xl">{item.favorite ? "⭐" : "☆"}</span>
+            <span className="text-sm font-medium text-ink-900">
+              {item.favorite ? "Favorit entfernen" : "Als Favorit markieren"}
+            </span>
+          </button>
 
           {/* Stückzahl */}
           <div className="flex items-center justify-between bg-sand-100 rounded-2xl px-4 py-3 mb-4">

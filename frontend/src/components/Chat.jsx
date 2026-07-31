@@ -2,6 +2,25 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../api";
 
+// Einfache Markdown-ähnliche Formatierung
+function formatMessage(text) {
+  if (!text) return text;
+  
+  // **bold** → <strong>
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  
+  // *italic* → <em>
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  
+  // `code` → <code>
+  text = text.replace(/`(.+?)`/g, '<code class="bg-ink-900/10 px-1 rounded">$1</code>');
+  
+  // Zeilenumbrüche → <br>
+  text = text.replace(/\n/g, '<br>');
+  
+  return text;
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState([
     {
@@ -127,7 +146,10 @@ export default function Chat() {
                     className="w-full rounded-xl mb-2 max-h-64 object-cover"
                   />
                 )}
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                <p 
+                  className="text-sm leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
+                />
               </div>
             </motion.div>
           ))}

@@ -80,41 +80,243 @@ def _generate_welcome_message(new_item: models.ClothingItem, existing_items: lis
     same_category = [it for it in existing_items if it.category == new_item.category]
     same_color = [it for it in existing_items if it.color and new_item.color and it.color.lower() == new_item.color.lower()]
     
-    # Kombinierbare Teile finden (komplementäre Kategorien)
-    combines_with = {
-        "T-Shirt": ["Jeans", "Chino", "Hose", "Shorts", "Rock"],
-        "Hemd": ["Jeans", "Chino", "Hose", "Anzughose", "Blazer"],
-        "Pullover": ["Jeans", "Chino", "Hose", "Rock"],
-        "Jacke": ["T-Shirt", "Hemd", "Pullover"],
-        "Blazer": ["Hemd", "Hose", "Anzughose", "Chino"],
-        "Jeans": ["T-Shirt", "Hemd", "Pullover", "Jacke"],
-        "Chino": ["T-Shirt", "Hemd", "Pullover", "Jacke", "Blazer"],
-        "Hose": ["T-Shirt", "Hemd", "Pullover", "Jacke", "Blazer"],
-        "Kleid": ["Jacke", "Blazer", "Cardigan"],
-        "Rock": ["T-Shirt", "Hemd", "Pullover", "Blazer"],
+    # INTELLIGENTE Kombinationen - nach Style-Regeln
+    style_matches = {
+        # Accessoires
+        "Gürtel": {
+            "matches": ["Schuhe", "Stiefel", "Sneaker", "Loafer", "Boots"],
+            "rule": "color",
+            "message": "Perfekt kombinierbar mit deinen {color} {category}!"
+        },
+        "Schuhe": {
+            "matches": ["Gürtel", "Anzughose", "Chino", "Jeans"],
+            "rule": "style",
+            "message": "Tolle Ergänzung zu deinem {style}-Stil!"
+        },
+        "Sneaker": {
+            "matches": ["Jeans", "Chino", "Jogginghose", "Shorts"],
+            "rule": "casual",
+            "message": "Lässig kombinierbar mit deinen {category}!"
+        },
+        "Stiefel": {
+            "matches": ["Gürtel", "Jeans", "Chino"],
+            "rule": "color",
+            "message": "Robuste Ergänzung zu deinen {category}!"
+        },
+        "Boots": {
+            "matches": ["Gürtel", "Jeans", "Chino"],
+            "rule": "color",
+            "message": "Starke Kombi mit deinen {category}!"
+        },
+        "Loafer": {
+            "matches": ["Gürtel", "Chino", "Anzughose"],
+            "rule": "formal",
+            "message": "Elegante Basis mit deiner {category}!"
+        },
+        "Krawatte": {
+            "matches": ["Hemd", "Anzug", "Blazer", "Sakko"],
+            "rule": "occasion",
+            "message": "Perfekt für formelle Anlässe mit deinem {category}!"
+        },
+        "Fliege": {
+            "matches": ["Hemd", "Anzug", "Smoking"],
+            "rule": "occasion",
+            "message": "Elegantes Detail zu deinem {category}!"
+        },
+        "Einstecktuch": {
+            "matches": ["Anzug", "Blazer", "Sakko"],
+            "rule": "occasion",
+            "message": "Elegante Ergänzung zu deinem {category}!"
+        },
+        "Schal": {
+            "matches": ["Mantel", "Jacke", "Parka"],
+            "rule": "layer",
+            "message": "Hält dich warm mit deiner {category}!"
+        },
+        "Mütze": {
+            "matches": ["Mantel", "Jacke", "Parka"],
+            "rule": "layer",
+            "message": "Perfekt für kalte Tage mit deiner {category}!"
+        },
+        "Cap": {
+            "matches": ["T-Shirt", "Hoodie", "Jogginghose"],
+            "rule": "casual",
+            "message": "Casual-Style mit deinem {category}!"
+        },
+        
+        # Oberteile
+        "T-Shirt": {
+            "matches": ["Jeans", "Chino", "Shorts", "Jogginghose"],
+            "rule": "casual",
+            "message": "Lässig kombinierbar mit deinen {category}!"
+        },
+        "Hemd": {
+            "matches": ["Anzughose", "Chino", "Blazer", "Sakko", "Anzug"],
+            "rule": "formal",
+            "message": "Elegante Basis für Outfits mit deiner {category}!"
+        },
+        "Polo": {
+            "matches": ["Chino", "Jeans", "Shorts"],
+            "rule": "smart-casual",
+            "message": "Smart-Casual mit deinen {category}!"
+        },
+        "Pullover": {
+            "matches": ["Hemd", "Jeans", "Chino"],
+            "rule": "layer",
+            "message": "Schöne Schicht über deinem {category}!"
+        },
+        "Cardigan": {
+            "matches": ["Hemd", "T-Shirt", "Chino"],
+            "rule": "layer",
+            "message": "Vielseitige Layer-Option mit deinem {category}!"
+        },
+        "Hoodie": {
+            "matches": ["Jeans", "Jogginghose", "Shorts"],
+            "rule": "casual",
+            "message": "Gemütlich kombinierbar mit deinen {category}!"
+        },
+        "Sweatshirt": {
+            "matches": ["Jeans", "Chino", "Jogginghose"],
+            "rule": "casual",
+            "message": "Relaxed-Fit mit deinen {category}!"
+        },
+        "Weste": {
+            "matches": ["Hemd", "Anzug", "Chino"],
+            "rule": "formal",
+            "message": "Elegante Schicht zu deinem {category}!"
+        },
+        
+        # Jacken & Mäntel
+        "Blazer": {
+            "matches": ["Hemd", "Chino", "Anzughose"],
+            "rule": "formal",
+            "message": "Verleiht deinem {category} mehr Eleganz!"
+        },
+        "Sakko": {
+            "matches": ["Hemd", "Chino", "Anzughose"],
+            "rule": "formal",
+            "message": "Business-ready mit deinem {category}!"
+        },
+        "Anzug": {
+            "matches": ["Hemd", "Krawatte", "Fliege"],
+            "rule": "formal",
+            "message": "Komplettiert dein formelles Outfit mit {category}!"
+        },
+        "Smoking": {
+            "matches": ["Hemd", "Fliege", "Krawatte"],
+            "rule": "formal",
+            "message": "Höchste Eleganz mit deinem {category}!"
+        },
+        "Jacke": {
+            "matches": ["T-Shirt", "Hemd", "Pullover"],
+            "rule": "layer",
+            "message": "Praktische Ergänzung zu deinem {category}!"
+        },
+        "Mantel": {
+            "matches": ["Anzug", "Hemd", "Pullover", "Schal"],
+            "rule": "layer",
+            "message": "Stilvoller Schutz über deinem {category}!"
+        },
+        "Parka": {
+            "matches": ["Hoodie", "Pullover", "Sweatshirt"],
+            "rule": "casual",
+            "message": "Warm und praktisch mit deinem {category}!"
+        },
+        "Lederjacke": {
+            "matches": ["T-Shirt", "Jeans", "Chino"],
+            "rule": "casual",
+            "message": "Cooler Edge mit deinen {category}!"
+        },
+        "Bomberjacke": {
+            "matches": ["T-Shirt", "Hoodie", "Jeans"],
+            "rule": "casual",
+            "message": "Streetstyle-Vibe mit deinem {category}!"
+        },
+        
+        # Hosen
+        "Anzughose": {
+            "matches": ["Hemd", "Blazer", "Sakko", "Anzug"],
+            "rule": "formal",
+            "message": "Business-ready mit deinem {category}!"
+        },
+        "Chino": {
+            "matches": ["Hemd", "T-Shirt", "Pullover", "Blazer", "Polo"],
+            "rule": "versatile",
+            "message": "Vielseitig kombinierbar mit deinem {category}!"
+        },
+        "Jeans": {
+            "matches": ["T-Shirt", "Hemd", "Pullover", "Jacke", "Hoodie"],
+            "rule": "casual",
+            "message": "Klassische Kombi mit deinem {category}!"
+        },
+        "Jogginghose": {
+            "matches": ["Hoodie", "Sweatshirt", "T-Shirt"],
+            "rule": "casual",
+            "message": "Relaxed-Look mit deinem {category}!"
+        },
+        "Shorts": {
+            "matches": ["T-Shirt", "Polo", "Hoodie"],
+            "rule": "casual",
+            "message": "Sommer-ready mit deinem {category}!"
+        },
+        
+        # Weitere
+        "Kleid": {
+            "matches": ["Jacke", "Blazer", "Cardigan", "Mantel"],
+            "rule": "layer",
+            "message": "Elegante Ergänzung zu deinem {category}!"
+        },
+        "Rock": {
+            "matches": ["T-Shirt", "Hemd", "Pullover", "Blazer"],
+            "rule": "versatile",
+            "message": "Schön kombinierbar mit deinem {category}!"
+        },
     }
     
-    complementary = []
-    for cat, matches in combines_with.items():
-        if new_item.category == cat:
-            complementary = [it for it in existing_items if it.category in matches]
-            break
+    # Prüfe ob es intelligente Style-Matches gibt
+    if new_item.category in style_matches:
+        match_config = style_matches[new_item.category]
+        target_categories = match_config["matches"]
+        rule = match_config["rule"]
+        
+        # Suche passende Teile nach Regel
+        matching_items = []
+        for it in existing_items:
+            if it.category not in target_categories:
+                continue
+            
+            # Regel anwenden
+            if rule == "color" and new_item.color and it.color:
+                # Farbvergleich (exakt oder neutral)
+                neutrals = ["schwarz", "weiß", "grau", "beige", "braun"]
+                if (new_item.color.lower() == it.color.lower() or 
+                    (new_item.color.lower() in neutrals and it.color.lower() in neutrals)):
+                    matching_items.append(it)
+            elif rule == "style" and new_item.style and it.style:
+                if new_item.style.lower() == it.style.lower():
+                    matching_items.append(it)
+            elif rule in ["formal", "casual", "versatile", "layer", "occasion", "smart-casual"]:
+                matching_items.append(it)
+        
+        if matching_items:
+            example = matching_items[0]
+            msg_template = match_config["message"]
+            return msg_template.format(
+                category=example.category,
+                color=example.color or "",
+                style=example.style or ""
+            ).replace("  ", " ")
     
-    # Message generieren basierend auf Kontext
+    # Fallback: Zu viele vom gleichen?
     if len(same_category) >= 3:
         return f"Du liebst {new_item.category}! Mit {len(same_category) + 1} Stück hast du jetzt eine solide Auswahl."
-    elif complementary:
-        example = complementary[0]
-        if same_color and example in same_color:
-            return f"Tolle Ergänzung! Passt perfekt zu deinen {example.color} {example.category}."
-        return f"Gute Wahl! Kombiniert sich super mit deinen {len(complementary)} {complementary[0].category}-Teilen."
-    elif same_color:
-        example = same_color[0]
-        return f"Schöne Ergänzung zu deinem {example.category} in {new_item.color}!"
-    elif len(existing_items) < 5:
+    
+    # Fallback: Garderobe wächst
+    if len(existing_items) < 5:
         return f"Deine Garderobe wächst! {new_item.name or new_item.category} ist eine tolle Ergänzung."
-    else:
-        return f"✨ {new_item.name or new_item.category} wurde zur Garderobe hinzugefügt!"
+    
+    # Standard-Fallback
+    return f"✨ {new_item.name or new_item.category} wurde zur Garderobe hinzugefügt!"
 
 
 # ---------- Health / Meta ----------
@@ -407,6 +609,24 @@ def update_quantity(
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Ungueltige Stückzahl.")
     item.quantity = max(1, min(999, qty))
+    db.commit()
+    db.refresh(item)
+    return _to_out(request, item)
+
+
+@app.patch("/api/items/{item_id}/favorite", response_model=ItemOut)
+def toggle_favorite(
+    item_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Favoriten-Status umschalten."""
+    item = db.get(models.ClothingItem, item_id)
+    if not item or item.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+    item.favorite = bool(payload.get("favorite", False))
     db.commit()
     db.refresh(item)
     return _to_out(request, item)

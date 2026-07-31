@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function Toast({ message, onClose, duration = 4000 }) {
+export default function Toast({ message, onClose, duration = 3000 }) {
   useEffect(() => {
     if (!message) return;
-    console.log("Toast displaying:", message);
+    console.log("Popup displaying:", message);
     const timer = setTimeout(() => {
-      console.log("Toast closing");
+      console.log("Popup closing");
       onClose();
     }, duration);
     return () => clearTimeout(timer);
@@ -15,33 +15,39 @@ export default function Toast({ message, onClose, duration = 4000 }) {
   return (
     <AnimatePresence>
       {message && (
-        <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -20, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="fixed z-50 left-0 right-0 px-4"
-          style={{
-            bottom: "calc(env(safe-area-inset-bottom) + 7rem)",
-            pointerEvents: "none"
-          }}
-        >
-          <div className="max-w-md mx-auto">
-            <div className="bg-gradient-to-br from-clay-500 to-clay-600 text-white rounded-2xl shadow-2xl p-4 border border-white/10">
-              <div className="flex items-start gap-3">
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-ink-900/20 backdrop-blur-sm z-50"
+            onClick={onClose}
+          />
+          
+          {/* Popup */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[85%] max-w-sm"
+          >
+            <div className="bg-gradient-to-br from-clay-500 to-clay-600 text-white rounded-2xl shadow-2xl p-6 border border-white/10">
+              <div className="flex flex-col items-center text-center gap-3">
                 <motion.span
                   initial={{ scale: 0, rotate: -180 }}
                   animate={{ scale: 1, rotate: 0 }}
                   transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                  className="text-2xl leading-none flex-shrink-0"
+                  className="text-4xl leading-none"
                 >
                   ✨
                 </motion.span>
-                <p className="text-sm font-medium leading-relaxed flex-1">{message}</p>
+                <p className="text-base font-medium leading-relaxed">{message}</p>
               </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        </>
       )}
     </AnimatePresence>
   );
