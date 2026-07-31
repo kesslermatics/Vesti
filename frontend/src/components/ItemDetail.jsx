@@ -16,27 +16,36 @@ function ImageGallery({ item }) {
     : baseThumbs;
 
   const [active, setActive] = useState(0);
-  useEffect(() => setActive(0), [item.id, urls.length]);
+  const [fullLoaded, setFullLoaded] = useState(false);
+  useEffect(() => { setActive(0); setFullLoaded(false); }, [item.id, urls.length]);
 
   const idx = Math.min(active, urls.length - 1);
-  const current = urls[idx];
+  const fullUrl = urls[idx];
+  const thumbUrl = thumbUrls[idx] || fullUrl;
   const isAiActive = item.has_ai_image && idx === 0;
+
+  // Wenn aktives Bild wechselt: Vollbild neu laden
+  useEffect(() => { setFullLoaded(false); }, [fullUrl]);
 
   return (
     <div>
       <div className="relative rounded-3xl overflow-hidden bg-ink-900/5 aspect-square">
-        <AnimatePresence mode="wait">
-          <motion.img
-            key={current}
-            src={current}
-            alt={item.name}
-            initial={{ opacity: 0, scale: 1.02 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="w-full h-full object-cover"
-          />
-        </AnimatePresence>
+        {/* Thumbnail sofort sichtbar als Platzhalter */}
+        <img
+          src={thumbUrl}
+          alt={item.name}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ filter: fullLoaded ? "none" : "blur(2px)", transition: "filter 0.15s" }}
+        />
+        {/* Vollbild lädt still im Hintergrund */}
+        <img
+          key={fullUrl}
+          src={fullUrl}
+          alt={item.name}
+          onLoad={() => setFullLoaded(true)}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ opacity: fullLoaded ? 1 : 0, transition: "opacity 0.2s" }}
+        />
         {isAiActive && (
           <span className="absolute top-3 left-3 bg-clay-500/90 text-white text-[11px] font-medium rounded-full px-2.5 py-1 backdrop-blur-md shadow-sm">
             ✨ In Szene gesetzt
@@ -95,6 +104,8 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
   const [aiBusy, setAiBusy] = useState(false);
   const [reanalyzeBusy, setReanalyzeBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
+  const [tryonBusy, setTryonBusy] = useState(false);
+  const [tryonImage, setTryonImage] = useState(null); // { base64, mime }
   const fileRef = useRef(null);
 
   const open = Boolean(item);
@@ -139,7 +150,6 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
         setError(msg || "Bild konnte nicht in Szene gesetzt werden.");
       }
     } finally {
-      setAiBusy(false);
     }
   }
 
@@ -195,6 +205,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
     setLoading(true);
     setError("");
     setResult(null);
+    setTryonImage(null);
     try {
       const res = await api.recommend({ item_id: item.id, occasion, note });
       setResult(res);
@@ -202,6 +213,21 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
       setError(err.message || "Empfehlung fehlgeschlagen.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function showTryon() {
+    if (!result) return;
+    setTryonBusy(true);
+    setError("");
+    try {
+      const ids = result.pieces.map((p) => p.item_id);
+      const res = await api.outfitTryon(ids, occasion);
+      setTryonImage({ base64: res.image_base64, mime: res.image_mime });
+    } catch (err) {
+      setError(err.message || "Anprobe fehlgeschlagen.");
+    } finally {
+      setTryonBusy(false);
     }
   }
 
@@ -220,6 +246,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
     setNote("");
     setResult(null);
     setError("");
+    setTryonImage(null);
     onClose();
   }
 
@@ -538,8 +565,48 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
                   <GlassCard className="p-4 text-sm text-ink-800 leading-relaxed">
                     {result.explanation}
                   </GlassCard>
+
+                  {/* KI-Anprobe */}
+                  <AnimatePresence>
+                    {tryonImage && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="rounded-3xl overflow-hidden relative"
+                      >
+                        <img
+                          src={`data:${tryonImage.mime};base64,${tryonImage.base64}`}
+                          alt="KI-Anprobe"
+                          className="w-full object-cover"
+                        />
+                        <span className="absolute top-3 left-3 bg-clay-500/90 text-white text-[11px] font-medium rounded-full px-2.5 py-1 backdrop-blur-md">
+                          ✨ KI-Anprobe
+                        </span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Anprobe-Button */}
                   <button
-                    onClick={() => setResult(null)}
+                    onClick={showTryon}
+                    disabled={tryonBusy}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl border border-clay-400/50 bg-clay-500/5 text-clay-600 font-medium py-3 hover:bg-clay-500/10 transition disabled:opacity-60"
+                  >
+                    {tryonBusy ? (
+                      <>
+                        <Spinner tone="clay" />
+                        Anprobe wird erstellt …
+                      </>
+                    ) : tryonImage ? (
+                      "🔄 Neue Anprobe"
+                    ) : (
+                      "✨ Anprobe zeigen"
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => { setResult(null); setTryonImage(null); }}
                     className="w-full rounded-2xl border border-white/50 bg-white/60 backdrop-blur-xl text-ink-700 font-medium py-2.5 hover:bg-white/80 transition"
                   >
                     Neuer Vorschlag

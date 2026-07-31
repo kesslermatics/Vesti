@@ -38,6 +38,34 @@ def _create_thumbnail(image_data: bytes, max_size: int = 400) -> bytes:
         return image_data
 
 
+def _compress_image(image_data: bytes, max_px: int = 1200, quality: int = 82) -> bytes:
+    """Begrenzt die Bildgröße auf max_px und komprimiert als JPEG.
+
+    Verhindert dass riesige Handyfotos (5-10 MB) unverändert gespeichert werden.
+    """
+    try:
+        img = Image.open(BytesIO(image_data))
+        # RGB konvertieren
+        if img.mode in ("RGBA", "LA", "P"):
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            bg.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+            img = bg
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        # Nur verkleinern wenn wirklich größer
+        if max(img.width, img.height) > max_px:
+            img.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        compressed = buf.getvalue()
+        # Nur nehmen wenn kleiner als Original
+        return compressed if len(compressed) < len(image_data) else image_data
+    except Exception:
+        return image_data
+
+
 class User(Base):
     __tablename__ = "users"
 

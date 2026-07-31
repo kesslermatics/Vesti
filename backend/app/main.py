@@ -647,6 +647,9 @@ def create_item(
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
 
+    # Vollbild auf max. 1200px begrenzen, spart DB-Platz und beschleunigt Detail-Ansicht
+    image_bytes = models._compress_image(image_bytes)
+
     # Marke gegen bereits verwendete Schreibweisen normalisieren
     brand = canonicalize(payload.brand, _user_brands(db, user.id)) if payload.brand else ""
 
@@ -733,6 +736,19 @@ def list_items(
     return [_to_out(request, it) for it in items]
 
 
+
+# Cache-Header für Bilder: 7 Tage im Browser, 30 Tage im CDN
+_IMAGE_CACHE = "public, max-age=604800, s-maxage=2592000, immutable"
+
+
+def _img_response(data: bytes, mime: str) -> Response:
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Cache-Control": _IMAGE_CACHE},
+    )
+
+
 @app.get("/api/items/{item_id}/image")
 def get_item_image(
     item_id: int,
@@ -742,7 +758,7 @@ def get_item_image(
     item = db.get(models.ClothingItem, item_id)
     if not item or not item.image_data:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
-    return Response(content=item.image_data, media_type=item.image_mime)
+    return _img_response(item.image_data, item.image_mime or "image/jpeg")
 
 
 @app.get("/api/items/{item_id}/thumbnail")
@@ -754,11 +770,10 @@ def get_item_thumbnail(
     item = db.get(models.ClothingItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Item nicht gefunden.")
-    # Fallback auf Vollbild wenn kein Thumbnail
     data = item.thumbnail_data if item.thumbnail_data else item.image_data
     if not data:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
-    return Response(content=data, media_type="image/jpeg")
+    return _img_response(data, "image/jpeg")
 
 
 @app.get("/api/item-images/{image_id}")
@@ -770,7 +785,7 @@ def get_extra_image(
     img = db.get(models.ItemImage, image_id)
     if not img or not img.image_data:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
-    return Response(content=img.image_data, media_type=img.image_mime)
+    return _img_response(img.image_data, img.image_mime or "image/jpeg")
 
 
 @app.get("/api/item-images/{image_id}/thumbnail")
@@ -782,11 +797,10 @@ def get_extra_thumbnail(
     img = db.get(models.ItemImage, image_id)
     if not img:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
-    # Fallback auf Vollbild wenn kein Thumbnail
     data = img.thumbnail_data if img.thumbnail_data else img.image_data
     if not data:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
-    return Response(content=data, media_type="image/jpeg")
+    return _img_response(data, "image/jpeg")
 
 
 @app.get("/api/items/{item_id}/ai-image")
@@ -798,7 +812,7 @@ def get_ai_image(
     item = db.get(models.ClothingItem, item_id)
     if not item or not item.ai_image_data:
         raise HTTPException(status_code=404, detail="Kein KI-Bild vorhanden.")
-    return Response(content=item.ai_image_data, media_type=item.ai_image_mime or "image/png")
+    return _img_response(item.ai_image_data, item.ai_image_mime or "image/png")
 
 
 @app.get("/api/items/{item_id}/ai-thumbnail")
@@ -813,7 +827,7 @@ def get_ai_thumbnail(
     data = item.ai_thumbnail_data if item.ai_thumbnail_data else item.ai_image_data
     if not data:
         raise HTTPException(status_code=404, detail="Kein KI-Bild vorhanden.")
-    return Response(content=data, media_type="image/jpeg")
+    return _img_response(data, "image/jpeg")
 
 
 @app.post("/api/items/{item_id}/generate-image", response_model=ItemOut)
@@ -1054,7 +1068,7 @@ def add_item_images(
         item.extra_images.append(
             models.ItemImage(
                 position=next_pos,
-                image_data=data,
+                image_data=models._compress_image(data),
                 image_mime=entry.get("image_mime") or "image/jpeg",
                 thumbnail_data=models._create_thumbnail(data),
             )

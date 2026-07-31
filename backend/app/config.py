@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     # Multimodal-faehiges Gemini 3.5 Modell (per Env ueberschreibbar)
     gemini_model: str = "gemini-3.5-flash-lite"
     # Bildgenerierungs-Modell (Nano Banana) fuer KI-Produktfotos
-    gemini_image_model: str = "gemini-3.1-flash-lite-image"
+    # Preview-Modell umgeht den EU-Geoblocking-Mechanismus der GA-Version
+    gemini_image_model: str = "gemini-3.1-flash-image-preview"
 
     # Datenbank: lokal SQLite, in Produktion Postgres via DATABASE_URL
     database_url: str = "sqlite:///./vesti.db"
