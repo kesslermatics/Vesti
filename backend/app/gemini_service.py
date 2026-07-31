@@ -61,6 +61,23 @@ def _call_with_retry(model: str, contents: list) -> Any:
     raise last_exc  # type: ignore[misc]
 
 
+def _image_parts(
+    images: list[tuple[bytes, str]] | bytes,
+    filename: str = "upload.jpg",
+) -> list[Any]:
+    """Normalisiert Bild-Input zu einer Liste von Gemini-Parts."""
+    if isinstance(images, (bytes, bytearray)):
+        mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+        images = [(bytes(images), mime)]
+
+    parts = []
+    for data, mime in images:
+        if not data:
+            continue
+        parts.append(types.Part.from_bytes(data=data, mime_type=mime or "image/jpeg"))
+    return parts
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     """Robustes Parsen: entfernt evtl. Markdown-Fences und schneidet auf das JSON-Objekt zu."""
     cleaned = text.strip()
@@ -75,17 +92,31 @@ def _extract_json(text: str) -> dict[str, Any]:
     return json.loads(cleaned)
 
 
-def quick_analyze_image(image_bytes: bytes, filename: str, hint: str = "") -> dict[str, Any]:
-    """Schritt 1: Schnelle Erkennung von Kategorie und Farbe."""
-    mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+def quick_analyze_image(
+    images: list[tuple[bytes, str]] | bytes,
+    filename: str = "upload.jpg",
+    hint: str = "",
+) -> dict[str, Any]:
+    """Schritt 1: Schnelle Erkennung von Kategorie und Farbe.
+
+    `images` ist eine Liste von (bytes, mime). Einzelne bytes werden aus
+    Rueckwaertskompatibilitaet weiterhin akzeptiert.
+    """
+    parts = _image_parts(images, filename)
 
     hint_block = (
         f"\nZusatzinfo vom Nutzer: {hint.strip()}"
         if hint and hint.strip()
         else ""
     )
+    multi_block = (
+        f"\nEs sind {len(parts)} Aufnahmen desselben Kleidungsstücks (z.B. Vorderseite, "
+        "Futter, Etikett). Nutze alle, um sicher zu bestimmen."
+        if len(parts) > 1
+        else ""
+    )
 
-    prompt = f"""Du bist ein Mode-Experte. Analysiere dieses Bild und erkenne NUR die Kategorie und die dominante Farbe.{hint_block}
+    prompt = f"""Du bist ein Mode-Experte. Analysiere die Aufnahme(n) und erkenne NUR die Kategorie und die dominante Farbe.{multi_block}{hint_block}
 
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
@@ -95,10 +126,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
     response = _call_with_retry(
         model=settings.gemini_model,
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime),
-            prompt,
-        ],
+        contents=[*parts, prompt],
     )
 
     data = _extract_json(response.text or "{}")
@@ -109,14 +137,24 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
 
 def detail_analyze_image(
-    image_bytes: bytes, filename: str, category: str, hint: str = ""
+    images: list[tuple[bytes, str]] | bytes,
+    filename: str = "upload.jpg",
+    category: str = "",
+    hint: str = "",
 ) -> dict[str, Any]:
     """Schritt 2: Detaillierte Analyse aller Metadaten basierend auf der Kategorie."""
-    mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+    parts = _image_parts(images, filename)
 
     hint_block = (
         f"\nZusatzinfo vom Nutzer: {hint.strip()}"
         if hint and hint.strip()
+        else ""
+    )
+    multi_block = (
+        f"\nDir liegen {len(parts)} Aufnahmen desselben Teils vor (z.B. Außenseite, Futter, "
+        "Pflege-Etikett, Detail). Wenn auf einem Etikett Material- oder Pflegeangaben zu lesen "
+        "sind, nutze diese bevorzugt gegenüber einer optischen Schätzung."
+        if len(parts) > 1
         else ""
     )
 
@@ -128,7 +166,7 @@ def detail_analyze_image(
     {', '.join(f'"{field}": "Wert"' for field in detail_fields)}
   }},"""
 
-    prompt = f"""Du bist ein Mode-Experte. Analysiere dieses {category} im Detail.{hint_block}
+    prompt = f"""Du bist ein Mode-Experte. Analysiere dieses {category} im Detail.{multi_block}{hint_block}
 
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
@@ -144,10 +182,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
     response = _call_with_retry(
         model=settings.gemini_model,
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime),
-            prompt,
-        ],
+        contents=[*parts, prompt],
     )
 
     data = _extract_json(response.text or "{}")

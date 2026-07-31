@@ -65,9 +65,16 @@ def _image_url(request: Request, item_id: int) -> str:
     return str(request.base_url).rstrip("/") + f"/api/items/{item_id}/image"
 
 
+def _extra_image_url(request: Request, image_id: int) -> str:
+    return str(request.base_url).rstrip("/") + f"/api/item-images/{image_id}"
+
+
 def _to_out(request: Request, item: models.ClothingItem) -> ItemOut:
     out = ItemOut.model_validate(item)
     out.image_url = _image_url(request, item.id)
+    out.image_urls = [out.image_url] + [
+        _extra_image_url(request, img.id) for img in (item.extra_images or [])
+    ]
     return out
 
 
@@ -440,26 +447,37 @@ def update_profile(
 # ---------- Analyse (zweistufig) ----------
 @app.post("/api/analyze/quick")
 async def analyze_quick(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     hint: str = Form(default=""),
     user: models.User = Depends(get_current_user),
 ):
-    """Schritt 1: Schnelle Kategorie & Farbe-Erkennung."""
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(status_code=400, detail="Leere Datei.")
+    """Schritt 1: Schnelle Kategorie & Farbe-Erkennung (ein oder mehrere Bilder)."""
+    images: list[tuple[bytes, str]] = []
+    for f in files:
+        data = await f.read()
+        if data:
+            images.append((data, f.content_type or "image/jpeg"))
 
-    mime = file.content_type or "image/jpeg"
+    if not images:
+        raise HTTPException(status_code=400, detail="Keine Bilddaten empfangen.")
+
     try:
-        data = gemini_service.quick_analyze_image(contents, file.filename or "upload.jpg", hint=hint)
+        result = gemini_service.quick_analyze_image(images, hint=hint)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"KI-Analyse fehlgeschlagen: {exc}")
 
+    encoded = [
+        {"image_base64": base64.b64encode(data).decode(), "image_mime": mime}
+        for data, mime in images
+    ]
+
     return {
-        "category": data["category"],
-        "color": data["color"],
-        "image_base64": base64.b64encode(contents).decode(),
-        "image_mime": mime,
+        "category": result["category"],
+        "color": result["color"],
+        # Erstes Bild bleibt das Hauptbild (Rueckwaertskompatibilitaet)
+        "image_base64": encoded[0]["image_base64"],
+        "image_mime": encoded[0]["image_mime"],
+        "images": encoded,
     }
 
 
@@ -469,9 +487,26 @@ async def analyze_detail(
     user: models.User = Depends(get_current_user),
 ):
     """Schritt 2: Detaillierte Metadaten-Extraktion basierend auf Kategorie."""
-    try:
-        image_bytes = base64.b64decode(payload["image_base64"])
-    except Exception:  # noqa: BLE001
+    raw_images = payload.get("images")
+    if not raw_images:
+        raw_images = [
+            {
+                "image_base64": payload.get("image_base64", ""),
+                "image_mime": payload.get("image_mime", "image/jpeg"),
+            }
+        ]
+
+    images: list[tuple[bytes, str]] = []
+    for entry in raw_images:
+        b64 = (entry or {}).get("image_base64", "")
+        if not b64:
+            continue
+        try:
+            images.append((base64.b64decode(b64), entry.get("image_mime") or "image/jpeg"))
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
+
+    if not images:
         raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
 
     category = payload.get("category", "")
@@ -479,7 +514,7 @@ async def analyze_detail(
 
     try:
         data = gemini_service.detail_analyze_image(
-            image_bytes, "upload.jpg", category=category, hint=hint
+            images, category=category, hint=hint
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Detail-Analyse fehlgeschlagen: {exc}")
@@ -543,6 +578,23 @@ def create_item(
         image_data=image_bytes,
         image_mime=payload.image_mime or "image/jpeg",
     )
+
+    # Zusatzbilder (Futter, Etikett, Detailaufnahmen)
+    for idx, extra in enumerate(payload.extra_images or []):
+        if not extra.image_base64:
+            continue
+        try:
+            extra_bytes = base64.b64decode(extra.image_base64)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="Zusatzbild ungueltig.")
+        item.extra_images.append(
+            models.ItemImage(
+                position=idx,
+                image_data=extra_bytes,
+                image_mime=extra.image_mime or "image/jpeg",
+            )
+        )
+
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -590,6 +642,18 @@ def get_item_image(
     if not item or not item.image_data:
         raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
     return Response(content=item.image_data, media_type=item.image_mime)
+
+
+@app.get("/api/item-images/{image_id}")
+def get_extra_image(
+    image_id: int,
+    db: Session = Depends(get_db),
+):
+    """Zusatzbild als Binaerdaten (Futter, Etikett, Detail)."""
+    img = db.get(models.ItemImage, image_id)
+    if not img or not img.image_data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    return Response(content=img.image_data, media_type=img.image_mime)
 
 
 @app.patch("/api/items/{item_id}/quantity", response_model=ItemOut)

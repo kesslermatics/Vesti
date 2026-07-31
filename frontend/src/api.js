@@ -149,9 +149,10 @@ export const api = {
     return handle(await fetch(`${BASE}/api/items`, { headers: authHeaders() }));
   },
 
-  async analyzeQuick(file, hint = "") {
+  async analyzeQuick(files, hint = "") {
+    const list = Array.isArray(files) ? files : [files];
     const form = new FormData();
-    form.append("file", file);
+    for (const f of list) form.append("files", f);
     if (hint) form.append("hint", hint);
     return handle(
       await fetch(`${BASE}/api/analyze/quick`, {

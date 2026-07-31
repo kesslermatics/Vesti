@@ -71,10 +71,19 @@ class AnalyzeResponse(BaseModel):
     image_mime: str
 
 
+class ImageUpload(BaseModel):
+    """Ein einzelnes Bild als base64."""
+
+    image_base64: str
+    image_mime: str = "image/jpeg"
+
+
 class ItemCreate(ItemMetadata):
     image_base64: str
     image_mime: str = "image/jpeg"
     details: dict = {}
+    # Weitere Aufnahmen (Futter, Etikett, Details)
+    extra_images: list[ImageUpload] = []
 
 
 class ItemOut(ItemMetadata):
@@ -82,7 +91,9 @@ class ItemOut(ItemMetadata):
 
     id: int
     image_url: str = ""
+    image_urls: list[str] = []
     details: dict = {}
+    favorite: bool = False
     created_at: datetime
 
 

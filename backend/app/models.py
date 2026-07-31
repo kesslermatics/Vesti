@@ -68,3 +68,26 @@ class ClothingItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     owner: Mapped["User"] = relationship(back_populates="items")
+
+    # Weitere Bilder (Futter, Etikett, Detailaufnahmen ...)
+    extra_images: Mapped[list["ItemImage"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="ItemImage.position",
+    )
+
+
+class ItemImage(Base):
+    """Zusatzbilder zu einem Kleidungsstueck (das erste Bild liegt auf dem Item selbst)."""
+
+    __tablename__ = "item_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    item_id: Mapped[int] = mapped_column(
+        ForeignKey("clothing_items.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+
+    item: Mapped["ClothingItem"] = relationship(back_populates="extra_images")

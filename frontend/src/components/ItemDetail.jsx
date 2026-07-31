@@ -1,8 +1,58 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../api";
 import Modal from "./Modal";
 import { SelectField, TextField } from "./Field";
+
+function ImageGallery({ item }) {
+  const urls = item.image_urls?.length ? item.image_urls : [item.image_url];
+  const [active, setActive] = useState(0);
+
+  // Bei Item-Wechsel zurück auf das Hauptbild
+  useEffect(() => setActive(0), [item.id]);
+
+  const current = urls[Math.min(active, urls.length - 1)];
+
+  return (
+    <div className="mb-4">
+      <div className="relative rounded-2xl overflow-hidden bg-white">
+        <AnimatePresence mode="wait">
+          <motion.img
+            key={current}
+            src={current}
+            alt={item.name}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="w-full aspect-[4/3] object-cover"
+          />
+        </AnimatePresence>
+        {urls.length > 1 && (
+          <span className="absolute bottom-2 right-2 bg-ink-900/70 text-white text-xs rounded-full px-2 py-0.5 backdrop-blur-sm">
+            {Math.min(active, urls.length - 1) + 1}/{urls.length}
+          </span>
+        )}
+      </div>
+
+      {urls.length > 1 && (
+        <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+          {urls.map((url, idx) => (
+            <button
+              key={url}
+              onClick={() => setActive(idx)}
+              className={`h-16 w-16 flex-shrink-0 rounded-xl overflow-hidden transition ${
+                idx === active ? "ring-2 ring-clay-500" : "opacity-60 hover:opacity-100"
+              }`}
+            >
+              <img src={url} alt={`Ansicht ${idx + 1}`} className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }) {
   const [occasion, setOccasion] = useState("");
@@ -86,11 +136,7 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
             </button>
           </div>
 
-          <img
-            src={item.image_url}
-            alt={item.name}
-            className="w-full aspect-[4/3] object-cover rounded-2xl mb-4"
-          />
+          <ImageGallery item={item} />
 
           <div className="flex flex-wrap gap-2 mb-4">
             {[item.category, item.color, item.style, item.material, item.season, item.brand]
