@@ -361,6 +361,10 @@ export default function App() {
     setSelected(updated);
   }
 
+  function openItem(item) {
+    setSelected(item);
+  }
+
   // Boot-Splash
   if (booting) {
     return (
