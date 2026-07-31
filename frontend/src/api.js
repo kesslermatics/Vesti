@@ -277,7 +277,7 @@ export const api = {
     );
   },
 
-  async function deleteItem(id) {
+  async deleteItem(id) {
     return handle(
       await fetch(`${BASE}/api/items/${id}`, {
         method: "DELETE",
