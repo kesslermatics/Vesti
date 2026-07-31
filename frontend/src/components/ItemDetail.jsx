@@ -132,7 +132,12 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
       const updated = await api.generateItemImage(item.id);
       onUpdated?.(updated);
     } catch (err) {
-      setError(err.message || "Bild konnte nicht in Szene gesetzt werden.");
+      const msg = err.message || "";
+      if (msg.includes("Wirtschaftsraum") || msg.includes("us-west1") || msg.includes("regulatorischen")) {
+        setError("🌍 Die Inszenierung ist in der EU von Google gesperrt. Das Backend müsste in einer US-Region (us-west1) laufen.");
+      } else {
+        setError(msg || "Bild konnte nicht in Szene gesetzt werden.");
+      }
     } finally {
       setAiBusy(false);
     }

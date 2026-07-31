@@ -62,10 +62,9 @@ app.add_middleware(
 
 
 _LOCATION_HINT = (
-    "Die Bildgenerierung ist an diesem Server-Standort nicht verfügbar. "
-    "Das liegt an Googles regionalen Beschränkungen für die Bild-KI – nicht an deinem Standort. "
-    "Abhilfe: ein Billing-Konto beim Gemini-API-Key hinterlegen oder das Backend in einer "
-    "US-Region betreiben."
+    "Das 'In Szene setzen' ist leider im Europäischen Wirtschaftsraum nicht verfügbar — "
+    "Google hat die Nano-Banana-Bildgenerierung in der EU aus regulatorischen Gründen gesperrt. "
+    "Das Backend müsste dafür in einer US-Region laufen (Railway-Region auf us-west1 wechseln)."
 )
 
 

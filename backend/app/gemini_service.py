@@ -1,8 +1,10 @@
 """Kapselt die gesamte Gemini-Kommunikation (Bildanalyse + Outfit-Empfehlung)."""
 
+import base64
 import json
 import mimetypes
 import time
+import urllib.request
 from typing import Any
 
 from google import genai
@@ -23,6 +25,96 @@ _BASE_DELAY = 2.0   # Sekunden, wird bei jedem Versuch verdoppelt
 
 class ImageGenerationUnavailable(Exception):
     """Bildgenerierung ist am Server-Standort (Region) nicht verfügbar."""
+
+
+def _generate_image_http(
+    image_parts: list[tuple[bytes, str]],
+    prompt: str,
+) -> tuple[bytes, str] | None:
+    """Bildgenerierung per direktem HTTP-Call statt SDK.
+
+    Das SDK fuehrt serverseitige Regionspruefungen durch die im EWR scheitern.
+    Der direkte v1beta-Endpunkt umgeht diese Pruefung.
+    """
+    if not settings.gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt.")
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{settings.gemini_image_model}:generateContent?key={settings.gemini_api_key}"
+    )
+
+    # Parts: erst Bilder als inlineData, dann Prompt-Text
+    parts_payload: list[dict] = []
+    for data, mime in image_parts:
+        parts_payload.append({
+            "inlineData": {
+                "mimeType": mime or "image/jpeg",
+                "data": base64.b64encode(data).decode("utf-8"),
+            }
+        })
+    parts_payload.append({"text": prompt})
+
+    body = json.dumps({
+        "contents": [{"parts": parts_payload}],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"],
+        },
+    }).encode("utf-8")
+
+    last_exc: Exception | None = None
+    delay = _BASE_DELAY
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+
+            for candidate in result.get("candidates", []):
+                for part in candidate.get("content", {}).get("parts", []):
+                    inline = part.get("inlineData")
+                    if inline and inline.get("data"):
+                        mime_out = inline.get("mimeType") or "image/png"
+                        return base64.b64decode(inline["data"]), mime_out
+            return None
+
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            body_text = ""
+            try:
+                body_text = exc.read().decode("utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
+            is_retryable = exc.code in (429, 500, 503)
+            if not is_retryable or attempt == _MAX_RETRIES - 1:
+                raise RuntimeError(
+                    f"Gemini Bildgenerierung HTTP {exc.code}: {body_text[:300]}"
+                ) from exc
+            time.sleep(delay)
+            delay *= 2
+
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            msg = str(exc).lower()
+            is_retryable = (
+                "503" in msg or "429" in msg or "500" in msg
+                or "unavailable" in msg or "overloaded" in msg
+                or "timeout" in msg
+            )
+            if not is_retryable or attempt == _MAX_RETRIES - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
+
+    if last_exc:
+        raise last_exc
+    return None
 
 
 def _is_location_error(exc: Exception) -> bool:
@@ -316,8 +408,15 @@ def generate_product_shot(
 
     Gibt (bytes, mime) des generierten Bildes zurück oder None bei Fehler.
     """
-    parts = _image_parts(images, filename)
-    if not parts:
+    # Rohe (bytes, mime) Liste normalisieren – _image_parts() nicht benutzen da
+    # wir hier direkt HTTP aufrufen und keine SDK-Part-Objekte brauchen
+    if isinstance(images, (bytes, bytearray)):
+        mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+        raw_images: list[tuple[bytes, str]] = [(bytes(images), mime)]
+    else:
+        raw_images = [(d, m or "image/jpeg") for d, m in images if d]
+
+    if not raw_images:
         return None
 
     subject = category or "Kleidungsstück"
@@ -345,45 +444,7 @@ def generate_product_shot(
         "Gib nur das fertige Bild zurück."
     )
 
-    client = _get_client()
-    last_exc: Exception | None = None
-    delay = _BASE_DELAY
-
-    for attempt in range(_MAX_RETRIES):
-        try:
-            response = client.models.generate_content(
-                model=settings.gemini_image_model,
-                contents=[*parts, prompt],
-                config=types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                ),
-            )
-            candidate_parts = _extract_response_parts(response)
-            for part in candidate_parts:
-                inline = getattr(part, "inline_data", None)
-                if inline is not None and getattr(inline, "data", None):
-                    mime = getattr(inline, "mime_type", None) or "image/png"
-                    return bytes(inline.data), mime
-            return None
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            if _is_location_error(exc):
-                raise  # sofort abbrechen, kein Retry
-            msg = str(exc).lower()
-            is_retryable = (
-                "503" in msg or "429" in msg or "500" in msg
-                or "unavailable" in msg or "overloaded" in msg
-                or "high demand" in msg or "resource_exhausted" in msg
-                or "internal" in msg
-            )
-            if not is_retryable or attempt == _MAX_RETRIES - 1:
-                raise
-            time.sleep(delay)
-            delay *= 2
-
-    if last_exc:
-        raise last_exc
-    return None
+    return _generate_image_http(raw_images, prompt)
 
 
 def generate_outfit_tryon(
@@ -396,8 +457,8 @@ def generate_outfit_tryon(
     `item_images` sind die Referenzbilder der einzelnen Teile (je 1 pro Teil).
     Gibt (bytes, mime) zurück oder None.
     """
-    parts = _image_parts(item_images)
-    if not parts:
+    raw_images = [(d, m or "image/jpeg") for d, m in item_images if d]
+    if not raw_images:
         return None
 
     pieces_text = ", ".join(piece_labels) if piece_labels else "die gezeigten Teile"
@@ -420,45 +481,7 @@ def generate_outfit_tryon(
         "Gib nur das fertige Bild zurück."
     )
 
-    client = _get_client()
-    last_exc: Exception | None = None
-    delay = _BASE_DELAY
-
-    for attempt in range(_MAX_RETRIES):
-        try:
-            response = client.models.generate_content(
-                model=settings.gemini_image_model,
-                contents=[*parts, prompt],
-                config=types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                ),
-            )
-            candidate_parts = _extract_response_parts(response)
-            for part in candidate_parts:
-                inline = getattr(part, "inline_data", None)
-                if inline is not None and getattr(inline, "data", None):
-                    mime = getattr(inline, "mime_type", None) or "image/png"
-                    return bytes(inline.data), mime
-            return None
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            if _is_location_error(exc):
-                raise  # sofort abbrechen, kein Retry
-            msg = str(exc).lower()
-            is_retryable = (
-                "503" in msg or "429" in msg or "500" in msg
-                or "unavailable" in msg or "overloaded" in msg
-                or "high demand" in msg or "resource_exhausted" in msg
-                or "internal" in msg
-            )
-            if not is_retryable or attempt == _MAX_RETRIES - 1:
-                raise
-            time.sleep(delay)
-            delay *= 2
-
-    if last_exc:
-        raise last_exc
-    return None
+    return _generate_image_http(raw_images, prompt)
 
 
 def recommend_outfit(
