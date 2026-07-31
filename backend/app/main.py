@@ -1013,13 +1013,16 @@ def reanalyze_item(
 
     category = quick.get("category") or item.category
 
-    # Schritt 2: Details
+    # Schritt 2: Details — mit bekannten Marken des Nutzers
+    known_brands = _user_brands(db, user.id)
     try:
-        detail = gemini_service.detail_analyze_image(refs, category=category)
+        detail = gemini_service.detail_analyze_image(
+            refs, category=category, known_brands=known_brands
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Detail-Analyse fehlgeschlagen: {exc}")
 
-    # Metadaten aktualisieren
+    # Metadaten vollständig überschreiben (nicht nur wenn neu besser ist)
     item.category = category
     item.color = quick.get("color") or item.color
     item.name = detail.get("name") or item.name
@@ -1029,12 +1032,15 @@ def reanalyze_item(
     item.occasion = detail.get("occasion") or item.occasion
     item.season = detail.get("season") or item.season
     item.description = detail.get("description") or item.description
+    # Marke: neue Erkennung gewinnt immer (Reanalyse soll alles frisch setzen)
+    if detail.get("brand"):
+        item.brand = canonicalize(detail["brand"], known_brands)
+    # Details komplett ersetzen (nicht mergen) damit alte Fehlklassifikationen weg sind
     new_details = detail.get("details") or {}
     if new_details:
-        # bestehende Details mit neuen zusammenführen (neue gewinnen)
-        merged = dict(item.details or {})
-        merged.update(new_details)
-        item.details = merged
+        item.details = new_details
+    elif not item.details:
+        item.details = {}
 
     # Schritt 3: optional neues KI-Produktfoto
     if regenerate_image:

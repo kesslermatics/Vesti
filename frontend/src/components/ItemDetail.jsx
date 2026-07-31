@@ -466,18 +466,25 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
                 </p>
               )}
 
-              {/* Tags */}
-              <div className="flex flex-wrap gap-2">
-                {[item.color, item.style, item.material, item.season, item.brand]
-                  .filter(Boolean)
-                  .map((tag, i) => (
-                    <span
-                      key={i}
-                      className="text-xs bg-white/60 backdrop-blur-md border border-white/40 text-ink-700 rounded-full px-3 py-1"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+              {/* Tags + Beschreibung */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {[item.category, item.color, item.style, item.material, item.pattern, item.season, item.occasion, item.brand]
+                    .filter(Boolean)
+                    .map((tag, i) => (
+                      <span
+                        key={i}
+                        className="text-xs bg-white/60 backdrop-blur-md border border-white/40 text-ink-700 rounded-full px-3 py-1"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                </div>
+                {item.description && (
+                  <p className="text-sm text-ink-700/70 leading-relaxed px-0.5">
+                    {item.description}
+                  </p>
+                )}
               </div>
 
               {/* KI-Produktfoto Steuerung */}
