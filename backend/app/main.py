@@ -523,6 +523,7 @@ async def analyze_quick(
 @app.post("/api/analyze/detail")
 async def analyze_detail(
     payload: dict,
+    db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
     """Schritt 2: Detaillierte Metadaten-Extraktion basierend auf Kategorie."""
@@ -551,9 +552,12 @@ async def analyze_detail(
     category = payload.get("category", "")
     hint = payload.get("hint", "")
 
+    # Bekannte Marken des Nutzers mitgeben für bessere Erkennung
+    known_brands = _user_brands(db, user.id)
+
     try:
         data = gemini_service.detail_analyze_image(
-            images, category=category, hint=hint
+            images, category=category, hint=hint, known_brands=known_brands
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Detail-Analyse fehlgeschlagen: {exc}")
@@ -702,24 +706,7 @@ def create_item(
     db.add(item)
     db.commit()
     db.refresh(item)
-    
-    # Generiere Welcome-Message basierend auf Garderobe
-    existing_items = db.scalars(
-        select(models.ClothingItem)
-        .where(
-            models.ClothingItem.user_id == user.id,
-            models.ClothingItem.id != item.id
-        )
-    ).all()
-    
-    welcome_msg = _generate_welcome_message(item, existing_items)
-    
-    result = _to_out(request, item)
-    # Füge Welcome-Message hinzu (als zusätzliches Feld im Response)
-    result_dict = result.model_dump()
-    result_dict["welcome_message"] = welcome_msg
-    
-    return result_dict
+    return _to_out(request, item)
 
 
 @app.get("/api/items", response_model=list[ItemOut])

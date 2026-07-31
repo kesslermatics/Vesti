@@ -139,7 +139,7 @@ export default function AddItem({ open, onClose, meta, onCreated }) {
         season: detail.season,
         description: detail.description,
         details: detail.details || {},
-        brand: "",
+        brand: detail.brand || "",  // von KI erkannt
         quantity: 1,
       });
 

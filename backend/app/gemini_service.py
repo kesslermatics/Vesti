@@ -263,6 +263,7 @@ def detail_analyze_image(
     filename: str = "upload.jpg",
     category: str = "",
     hint: str = "",
+    known_brands: list[str] | None = None,
 ) -> dict[str, Any]:
     """Schritt 2: Detaillierte Analyse aller Metadaten basierend auf der Kategorie."""
     parts = _image_parts(images, filename)
@@ -288,7 +289,17 @@ def detail_analyze_image(
     {', '.join(f'"{field}": "Wert"' for field in detail_fields)}
   }},"""
 
-    prompt = f"""Du bist ein Mode-Experte. Analysiere dieses {category} im Detail.{multi_block}{hint_block}
+    # Bekannte Marken als Kontext mitgeben
+    brands_block = ""
+    if known_brands:
+        brands_list = ", ".join(f'"{b}"' for b in known_brands[:30])
+        brands_block = f"""
+Bereits bekannte Marken des Nutzers: [{brands_list}]
+Wenn die Marke auf dem Bild oder im Hinweis eindeutig erkennbar ist (Logo, Etikett, Aufdruck, oder explizit im Hinweis genannt), trage sie ein.
+Bevorzuge dabei die exakte Schreibweise einer bereits bekannten Marke.
+Wenn die Marke nicht eindeutig erkennbar ist, lasse das Feld leer."""
+
+    prompt = f"""Du bist ein Mode-Experte. Analysiere dieses {category} im Detail.{multi_block}{hint_block}{brands_block}
 
 WICHTIG: Wenn ein Pflege-Etikett sichtbar ist, lies ALLE Informationen darauf:
 - Exakte Material-Zusammensetzung (z.B. "100% Baumwolle" oder "80% Wolle, 20% Polyester")
@@ -301,6 +312,7 @@ WICHTIG: Wenn ein Pflege-Etikett sichtbar ist, lies ALLE Informationen darauf:
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
   "name": "kurzer sprechender Name, z.B. 'Blaues Leinenhemd'",
+  "brand": "Markenname wenn eindeutig erkennbar, sonst leer",
   "material": "exakte Material-Zusammensetzung vom Etikett oder geschätzt, z.B. '100% Baumwolle' oder 'Leder'",
   "pattern": "Muster/Textur, z.B. 'uni', 'gestreift', 'kariert'",
   "style": "einer aus: {', '.join(STYLES)}",
@@ -343,6 +355,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
     return {
         "name": str(data.get("name", "")),
+        "brand": str(data.get("brand", "")),
         "material": str(data.get("material", "")),
         "pattern": str(data.get("pattern", "")),
         "style": str(data.get("style", "")),

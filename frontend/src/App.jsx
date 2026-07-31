@@ -205,7 +205,6 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
-  const [toastMessage, setToastMessage] = useState("");
   const [greeting, setGreeting] = useState(getRandomGreeting());
 
   // Neue Begrüßung beim Tab-Wechsel zur Garderobe
@@ -324,11 +323,6 @@ export default function App() {
 
   function handleCreated(item) {
     setItems((prev) => [item, ...prev]);
-    // Toast mit Welcome-Message anzeigen
-    console.log("Item created:", item);
-    const message = item.welcome_message || `✨ ${item.name || item.category} wurde hinzugefügt!`;
-    console.log("Toast message:", message);
-    setToastMessage(message);
   }
 
   function handleDeleted(id) {
@@ -699,8 +693,7 @@ export default function App() {
         />
       )}
 
-      {/* Toast für Welcome-Messages */}
-      <Toast message={toastMessage} onClose={() => setToastMessage("")} />
+      {/* kein Toast mehr */}
     </div>
   );
 }
