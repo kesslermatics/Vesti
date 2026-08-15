@@ -195,7 +195,7 @@ def migrate_legacy_watches(engine: Engine) -> int:
                     ai_thumbnail_data=item.ai_thumbnail_data,
                     created_at=item.created_at,
                     # Technische Uhrendaten fehlen komplett -> KI soll neu erfassen
-                    needs_review=True,
+                    needs_review=1,
                 )
 
                 for extra in item.extra_images or []:

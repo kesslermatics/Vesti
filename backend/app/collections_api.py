@@ -494,7 +494,7 @@ def update_watch(
             watch.brand, _collection_brands(db, models.Watch, user.id) + WATCH_BRANDS
         )
     # Eine manuelle Korrektur gilt als Pruefung
-    watch.needs_review = False
+    watch.needs_review = 0
 
     db.commit()
     db.refresh(watch)
@@ -569,7 +569,7 @@ def reanalyze_watch(
             continue
         setattr(watch, field, value)
 
-    watch.needs_review = False
+    watch.needs_review = 0
 
     if regenerate:
         try:
@@ -924,7 +924,7 @@ def update_fragrance(
         frag.brand = canonicalize(
             frag.brand, _collection_brands(db, models.Fragrance, user.id) + FRAGRANCE_BRANDS
         )
-    frag.needs_review = False
+    frag.needs_review = 0
 
     db.commit()
     db.refresh(frag)
@@ -1009,7 +1009,7 @@ def reanalyze_fragrance(
             continue
         setattr(frag, field, value)
 
-    frag.needs_review = False
+    frag.needs_review = 0
 
     if regenerate:
         try:

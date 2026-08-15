@@ -43,8 +43,6 @@ export default function OutfitGenerator({
 // Wetter-Optionen: bewusst kurz und bildlich statt meteorologisch korrekt.
 // Der Nutzer soll schnell tippen, nicht einen Wetterbericht eingeben.
 const WEATHER_OPTIONS = [
-// Der Nutzer soll schnell tippen, nicht einen Wetterbericht eingeben.
-const WEATHER_OPTIONS = [
   { value: "heiß (über 28°C)",    icon: "🌡️" },
   { value: "warm und sonnig",      icon: "☀️" },
   { value: "angenehm (ca. 18°C)", icon: "🌤️" },
