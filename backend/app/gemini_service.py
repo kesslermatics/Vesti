@@ -528,6 +528,7 @@ def recommend_outfit(
     note: str,
     watches: list[dict[str, Any]] | None = None,
     fragrances: list[dict[str, Any]] | None = None,
+    weather: str = "",
 ) -> dict[str, Any]:
     """Empfiehlt passende Teile aus der Garderobe und urteilt ehrlich, ob das Outfit taugt.
 
@@ -578,10 +579,21 @@ def recommend_outfit(
             "Eine unpassende Empfehlung ist schlechter als keine."
         )
 
+    weather_block_hint = ""
+    if weather and weather.strip():
+        weather_block_hint = (
+            f"\n- Wetter: {weather.strip()}. Verbindlich für die Auswahl. "
+            "Leichte, offene oder kurze Teile gehören nicht in einen Regentag, "
+            "dicke Lagen nicht in Hitze."
+        )
+
+    # Wetter-Kontext: beeinflusst Layering, Stoffwahl und ob Schuhe nass werden dürfen
+    weather_block = f"\nWetter: {weather.strip()}" if weather and weather.strip() else ""
+
     prompt = f"""Du bist ein ehrlicher, direkter Stilberater. Der Nutzer möchte ein Outfit für folgenden Anlass zusammenstellen.
 
 Basis-Teil: {base_text}
-Anlass: {occasion or 'nicht angegeben'}
+Anlass: {occasion or 'nicht angegeben'}{weather_block}
 Zusatzwunsch: {note or 'keiner'}
 
 Verfügbare Teile in der Garderobe (nummeriert):
@@ -591,7 +603,7 @@ WICHTIG:
 - Sei ehrlich. Wenn das Basis-Teil oder die verfügbaren Kombinationen für den Anlass nicht wirklich geeignet sind, sag das klar.
 - Berücksichtige ALLE Kategorien: Oberteile, Hosen, Schuhe, Jacken, Gürtel, Accessoires, etc.
 - Ein komplettes Outfit sollte mindestens Oberteil + Unterteil enthalten, idealerweise auch Schuhe und ggf. Jacke/Accessoires.
-- Nenne in deiner Erklärung die Teile NUR beim Namen (z.B. "schwarze Chino"), KEINE IDs oder Nummern!{extras_hint}
+- Nenne in deiner Erklärung die Teile NUR beim Namen (z.B. "schwarze Chino"), KEINE IDs oder Nummern!{weather_block_hint}{extras_hint}
 
 Wähle die am besten passenden Teile aus der Garderobe (Basis-Teil nicht nochmal nennen).
 
@@ -649,6 +661,7 @@ def generate_outfits(
     count: int = 5,
     watches: list[dict[str, Any]] | None = None,
     fragrances: list[dict[str, Any]] | None = None,
+    weather: str = "",
 ) -> dict[str, Any]:
     """Generiert mehrere komplette Outfit-Vorschläge aus der Garderobe.
 
@@ -697,9 +710,20 @@ def generate_outfits(
             "- Passt nichts, setze den jeweiligen Index auf null."
         )
 
+    weather_hint = ""
+    if weather and weather.strip():
+        weather_hint = (
+            f"\n- Wetter: {weather.strip()}. Das ist verbindlich. "
+            "Kurze Hosen, leichte Stoffe oder offene Schuhe haben bei Regen oder Kälte "
+            "in keinem Outfit etwas verloren, egal wie schön sie aussehen. "
+            "Umgekehrt wirken dicke Lagen und schwere Stoffe bei Hitze deplatziert."
+        )
+
+    weather_block = f"\nWetter: {weather.strip()}" if weather and weather.strip() else ""
+
     prompt = f"""Du bist ein kreativer Stilberater. Der Nutzer möchte Outfit-Vorschläge aus seiner Garderobe.
 
-Anlass: {occasion or 'Alltag / keine Vorgabe'}
+Anlass: {occasion or 'Alltag / keine Vorgabe'}{weather_block}
 Zusatzwunsch: {note or 'keiner'}
 
 Verfügbare Teile in der Garderobe (nummeriert):
@@ -713,7 +737,7 @@ WICHTIG:
 - Sei ehrlich: wenn die Garderobe nicht viel hergibt oder für den Anlass ungeeignet ist, sag das
 - Berücksichtige ALLE Kategorien: T-Shirts, Hemden, Hosen, Jeans, Schuhe, Jacken, Gürtel, Accessoires, etc.
 - Verwende die NUMMERN (0, 1, 2, ...) aus der jeweiligen Liste oben um etwas zu referenzieren
-- In deiner Begründung nenne die Teile NUR beim Namen (z.B. "blaues Hemd"), KEINE Nummern oder IDs!{extras_hint}
+- In deiner Begründung nenne die Teile NUR beim Namen (z.B. "blaues Hemd"), KEINE Nummern oder IDs!{weather_hint}{extras_hint}
 
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{

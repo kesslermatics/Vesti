@@ -1080,7 +1080,7 @@ def toggle_favorite(
     item = db.get(models.ClothingItem, item_id)
     if not item or item.user_id != user.id:
         raise HTTPException(status_code=404, detail="Nicht gefunden.")
-    item.favorite = bool(payload.get("favorite", False))
+    item.favorite = 1 if payload.get("favorite", False) else 0
     db.commit()
     db.refresh(item)
     return _to_out(request, item)
@@ -1307,6 +1307,7 @@ def recommend(
             payload.note,
             watches=watches,
             fragrances=fragrances,
+            weather=getattr(payload, "weather", "") or "",
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Empfehlung fehlgeschlagen: {exc}")
@@ -1350,6 +1351,7 @@ def generate_outfits_endpoint(
     occasion = payload.get("occasion", "")
     note = payload.get("note", "")
     count = min(10, max(1, int(payload.get("count", 5))))
+    weather = payload.get("weather", "")
     
     all_items = db.scalars(
         select(models.ClothingItem).where(models.ClothingItem.user_id == user.id)
@@ -1382,6 +1384,7 @@ def generate_outfits_endpoint(
             count,
             watches=watches,
             fragrances=fragrances,
+            weather=weather,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Outfit-Generierung fehlgeschlagen: {exc}")

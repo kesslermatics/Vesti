@@ -129,8 +129,8 @@ class ClothingItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # Marke (optional, hilft der KI)
     brand: Mapped[str] = mapped_column(String(120), default="")
-    # Favorit-Flag
-    favorite: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    # Favorit-Flag — Integer (0/1), nicht bool, fuer Postgres-Kompatibilitaet
+    favorite: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Bild direkt in der DB gespeichert
     image_data: Mapped[bytes] = mapped_column(LargeBinary)
@@ -231,9 +231,9 @@ class Watch(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
 
-    favorite: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    favorite: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Aus der Kleidungs-Garderobe migriert und noch nicht per KI neu erfasst
-    needs_review: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    needs_review: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # --- Bilder ---
     image_data: Mapped[bytes] = mapped_column(LargeBinary)
@@ -317,8 +317,8 @@ class Fragrance(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
 
-    favorite: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
-    needs_review: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    favorite: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    needs_review: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # --- Bilder ---
     image_data: Mapped[bytes] = mapped_column(LargeBinary)

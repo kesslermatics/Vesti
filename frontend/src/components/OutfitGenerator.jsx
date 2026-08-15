@@ -11,6 +11,7 @@ export default function OutfitGenerator({
   useAiImages = false,
 }) {
   const [occasion, setOccasion] = useState("");
+  const [weather, setWeather] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [outfits, setOutfits] = useState(null);
@@ -22,7 +23,7 @@ export default function OutfitGenerator({
     setError("");
     setOutfits(null);
     try {
-      const result = await api.generateOutfits({ occasion, note, count: 5 });
+      const result = await api.generateOutfits({ occasion, weather, note, count: 5 });
       setOutfits(result.outfits || []);
       setExpanded(true);
     } catch (err) {
@@ -36,7 +37,23 @@ export default function OutfitGenerator({
     setOutfits(null);
     setExpanded(false);
     setError("");
+    setWeather("");
   }
+
+// Wetter-Optionen: bewusst kurz und bildlich statt meteorologisch korrekt.
+// Der Nutzer soll schnell tippen, nicht einen Wetterbericht eingeben.
+const WEATHER_OPTIONS = [
+// Der Nutzer soll schnell tippen, nicht einen Wetterbericht eingeben.
+const WEATHER_OPTIONS = [
+  { value: "heiß (über 28°C)",    icon: "🌡️" },
+  { value: "warm und sonnig",      icon: "☀️" },
+  { value: "angenehm (ca. 18°C)", icon: "🌤️" },
+  { value: "kühl (unter 15°C)",   icon: "🌥️" },
+  { value: "kalt (unter 5°C)",    icon: "🧊" },
+  { value: "regnerisch",          icon: "🌧️" },
+  { value: "windig",              icon: "💨" },
+  { value: "Schnee",              icon: "❄️" },
+];
 
   return (
     <div className="mb-8">
@@ -91,6 +108,36 @@ export default function OutfitGenerator({
             options={meta.occasions}
           />
 
+          {/* Wetter-Chips – optional, ein Tap genügt */}
+          <div className="block">
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-xs font-medium text-ink-700/70 uppercase tracking-wide">
+                Wetter
+              </span>
+              <span className="text-xs text-ink-700/40">optional</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {WEATHER_OPTIONS.map((w) => {
+                const active = weather === w.value;
+                return (
+                  <button
+                    key={w.value}
+                    type="button"
+                    onClick={() => setWeather(active ? "" : w.value)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition flex items-center gap-1 ${
+                      active
+                        ? "bg-clay-500 text-white"
+                        : "bg-sand-100 text-ink-700/70 hover:bg-sand-200"
+                    }`}
+                  >
+                    <span>{w.icon}</span>
+                    <span>{w.value}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <TextField
             label="Zusatzwunsch (optional)"
             value={note}
@@ -134,6 +181,7 @@ export default function OutfitGenerator({
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-lg text-ink-900">
               Deine Outfits für {occasion || "heute"}
+              {weather ? ` · ${weather.split("(")[0].trim()}` : ""}
             </h3>
             <button
               onClick={reset}

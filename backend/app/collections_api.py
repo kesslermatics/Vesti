@@ -510,7 +510,7 @@ def toggle_watch_favorite(
     user: models.User = Depends(get_current_user),
 ):
     watch = _get_owned(db, models.Watch, watch_id, user.id)
-    watch.favorite = bool(payload.get("favorite", False))
+    watch.favorite = 1 if payload.get("favorite", False) else 0
     db.commit()
     db.refresh(watch)
     return _watch_out(request, watch, wrist_cm(user))
@@ -940,7 +940,7 @@ def toggle_fragrance_favorite(
     user: models.User = Depends(get_current_user),
 ):
     frag = _get_owned(db, models.Fragrance, fragrance_id, user.id)
-    frag.favorite = bool(payload.get("favorite", False))
+    frag.favorite = 1 if payload.get("favorite", False) else 0
     db.commit()
     db.refresh(frag)
     return _fragrance_out(request, frag)

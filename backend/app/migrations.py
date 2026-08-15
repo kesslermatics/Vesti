@@ -185,7 +185,7 @@ def migrate_legacy_watches(engine: Engine) -> int:
                     style="",
                     occasions=[item.occasion] if item.occasion else [],
                     complications=[],
-                    favorite=bool(item.favorite),
+                    favorite=1 if item.favorite else 0,
                     # Bilder 1:1 uebernehmen
                     image_data=item.image_data,
                     image_mime=item.image_mime or "image/jpeg",

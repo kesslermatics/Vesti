@@ -110,6 +110,7 @@ class RecommendRequest(BaseModel):
     item_id: int
     occasion: str = ""
     note: str = ""
+    weather: str = ""
 
 
 class RecommendedPiece(BaseModel):
