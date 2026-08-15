@@ -11,6 +11,7 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.engine import Engine
 
 logger = logging.getLogger("vesti.migrations")
+logger.setLevel(logging.INFO)  # sichtbar in Railway auch ohne extra Log-Config
 
 # Erwartete Spalten pro Tabelle:
 # (Spaltenname, Postgres-Typ, SQLite-Typ, Default-Ausdruck oder None, nullable)
@@ -136,20 +137,7 @@ def run_migrations(engine: Engine) -> None:
 
 
 def migrate_legacy_watches(engine: Engine) -> int:
-    """Zieht Uhren aus `clothing_items` in die eigene Tabelle `watches` um.
-
-    Frueher war "Uhr" eine Kleidungskategorie unter den Accessoires. Da Uhren
-    jetzt eine eigene Sammlung mit eigenen Feldern haben, werden bestehende
-    Eintraege einmalig umgezogen: Bilder und die wenigen passenden Metadaten
-    werden uebernommen, alles andere bleibt leer und wird mit
-    `needs_review = True` zur KI-Neuanalyse markiert.
-
-    Der Umzug ist idempotent: die Quellzeilen werden geloescht und die
-    Kategorie "Uhr" existiert nicht mehr, es kommen also keine neuen dazu.
-    Gibt die Anzahl der umgezogenen Uhren zurueck.
-    """
-    # Lokal importieren: models importiert database, das wiederum config laedt.
-    # Ein Top-Level-Import wuerde die Importreihenfolge in main.py verkomplizieren.
+    """Zieht Uhren aus `clothing_items` in die eigene Tabelle `watches` um."""
     from sqlalchemy.orm import Session
 
     from . import models
@@ -172,21 +160,31 @@ def migrate_legacy_watches(engine: Engine) -> int:
             if not legacy:
                 return 0
 
-            for item in legacy:
+            total = len(legacy)
+            logger.info(
+                "Migration: %s Uhr(en) gefunden – starte Umzug in die Uhren-Sammlung",
+                total,
+            )
+
+            for idx, item in enumerate(legacy, start=1):
+                logger.info(
+                    "Migration: Uhr %s/%s – %s (user_id=%s)",
+                    idx,
+                    total,
+                    item.name or item.category,
+                    item.user_id,
+                )
                 watch = models.Watch(
                     user_id=item.user_id,
-                    # Was sich sinnvoll uebernehmen laesst
                     name=item.name or "Uhr",
                     brand=item.brand or "",
                     dial_color=item.color or "",
                     band_material=item.material or "",
                     description=item.description or "",
-                    # Der alte Kleidungs-Stil ist kein Uhren-Stil, daher leer lassen
                     style="",
                     occasions=[item.occasion] if item.occasion else [],
                     complications=[],
                     favorite=1 if item.favorite else 0,
-                    # Bilder 1:1 uebernehmen
                     image_data=item.image_data,
                     image_mime=item.image_mime or "image/jpeg",
                     thumbnail_data=item.thumbnail_data,
@@ -194,7 +192,6 @@ def migrate_legacy_watches(engine: Engine) -> int:
                     ai_image_mime=item.ai_image_mime or "image/png",
                     ai_thumbnail_data=item.ai_thumbnail_data,
                     created_at=item.created_at,
-                    # Technische Uhrendaten fehlen komplett -> KI soll neu erfassen
                     needs_review=1,
                 )
 
@@ -214,7 +211,12 @@ def migrate_legacy_watches(engine: Engine) -> int:
                 db.delete(item)
                 moved += 1
 
+            logger.info(
+                "Migration: Committing %s Uhr(en) …", moved
+            )
             db.commit()
+            logger.info("Migration: Commit erfolgreich.")
+
     except Exception as exc:  # noqa: BLE001
         logger.warning("Uhren-Migration fehlgeschlagen: %s", exc)
         return 0

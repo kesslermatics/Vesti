@@ -1312,13 +1312,14 @@ def pending_review(
     """
     watches = db.scalar(
         select(func.count(models.Watch.id)).where(
-            models.Watch.user_id == user.id, models.Watch.needs_review == True  # noqa: E712
+            models.Watch.user_id == user.id,
+            models.Watch.needs_review == 1,
         )
     ) or 0
     fragrances = db.scalar(
         select(func.count(models.Fragrance.id)).where(
             models.Fragrance.user_id == user.id,
-            models.Fragrance.needs_review == True,  # noqa: E712
+            models.Fragrance.needs_review == 1,
         )
     ) or 0
     return {"watches": watches, "fragrances": fragrances, "total": watches + fragrances}
