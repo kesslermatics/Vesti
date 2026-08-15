@@ -15,7 +15,22 @@ function Spinner({ className = "w-4 h-4 border-clay-500" }) {
 }
 
 /* ─────────────── Vorschläge ─────────────── */
+// Auf welche Sammlung sich die Vorschläge beziehen sollen
+const DOMAINS = [
+  { id: "", label: "Alles" },
+  { id: "Kleidung", label: "👕 Kleidung" },
+  { id: "Uhr", label: "⌚ Uhren" },
+  { id: "Duft", label: "🧴 Düfte" },
+];
+
+const DOMAIN_BADGE = {
+  Kleidung: "👕",
+  Uhr: "⌚",
+  Duft: "🧴",
+};
+
 function Suggest() {
+  const [domain, setDomain] = useState("");
   const [direction, setDirection] = useState("");
   const [history, setHistory] = useState([]);
   const [result, setResult] = useState(null);
@@ -26,7 +41,7 @@ function Suggest() {
     setLoading(true);
     setError("");
     try {
-      const res = await api.shoppingSuggest({ direction: text, history });
+      const res = await api.shoppingSuggest({ direction: text, history, domain });
       setResult(res);
       setHistory((h) => [
         ...h,
@@ -48,6 +63,23 @@ function Suggest() {
 
   return (
     <div className="space-y-5">
+      {/* Sammlungs-Filter */}
+      <div className="flex flex-wrap gap-1.5">
+        {DOMAINS.map((d) => (
+          <button
+            key={d.id}
+            onClick={() => setDomain(d.id)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+              domain === d.id
+                ? "bg-clay-500 text-white"
+                : "bg-sand-100 text-ink-700/70 hover:bg-sand-200"
+            }`}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+
       {/* Chat-Verlauf */}
       {history.length > 0 && (
         <div className="space-y-2">
@@ -95,6 +127,7 @@ function Suggest() {
               <div className="flex items-start justify-between gap-3 mb-2">
                 <h4 className="font-medium text-ink-900 leading-snug">{s.title}</h4>
                 <span className="shrink-0 text-xs bg-sand-100 text-ink-700 rounded-full px-2.5 py-1">
+                  {DOMAIN_BADGE[s.domain] ? `${DOMAIN_BADGE[s.domain]} ` : ""}
                   {s.category}
                 </span>
               </div>
@@ -140,7 +173,7 @@ function Suggest() {
           {loading ? (
             <>
               <Spinner className="w-4 h-4 border-white" />
-              Analysiere deine Garderobe …
+              Analysiere deinen Bestand …
             </>
           ) : result ? (
             "Neue Vorschläge"

@@ -316,6 +316,289 @@ export const api = {
     );
   },
 
+  // ---- Uhren ----
+  async listWatches() {
+    return handle(await fetch(`${BASE}/api/watches`, { headers: authHeaders() }));
+  },
+
+  async analyzeWatch(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/watch`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async analyzeWatchShot(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/watch-shot`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async createWatch(payload) {
+    return handle(
+      await fetch(`${BASE}/api/watches`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async updateWatch(id, payload) {
+    return handle(
+      await fetch(`${BASE}/api/watches/${id}`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async deleteWatch(id) {
+    return handle(
+      await fetch(`${BASE}/api/watches/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async toggleWatchFavorite(id, favorite) {
+    return handle(
+      await fetch(`${BASE}/api/watches/${id}/favorite`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ favorite }),
+      })
+    );
+  },
+
+  async reanalyzeWatch(id, regenerateImage = true) {
+    return handle(
+      await fetch(`${BASE}/api/watches/${id}/reanalyze`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ regenerate_image: regenerateImage }),
+      })
+    );
+  },
+
+  async generateWatchImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/watches/${id}/generate-image`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async deleteWatchAiImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/watches/${id}/ai-image`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async addWatchImages(id, images) {
+    return handle(
+      await fetch(`${BASE}/api/watches/${id}/images`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ images }),
+      })
+    );
+  },
+
+  async deleteWatchImage(imageId) {
+    return handle(
+      await fetch(`${BASE}/api/watch-images/${imageId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async getWatchBrands() {
+    return handle(await fetch(`${BASE}/api/brands/watches`, { headers: authHeaders() }));
+  },
+
+  // ---- Düfte ----
+  async listFragrances() {
+    return handle(await fetch(`${BASE}/api/fragrances`, { headers: authHeaders() }));
+  },
+
+  async analyzeFragrance(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/fragrance`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async analyzeFragranceShot(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/fragrance-shot`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async createFragrance(payload) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async updateFragrance(id, payload) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async deleteFragrance(id) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async toggleFragranceFavorite(id, favorite) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}/favorite`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ favorite }),
+      })
+    );
+  },
+
+  async updateFillLevel(id, fillLevel) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}/fill-level`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ fill_level: fillLevel }),
+      })
+    );
+  },
+
+  async reanalyzeFragrance(id, regenerateImage = true) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}/reanalyze`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ regenerate_image: regenerateImage }),
+      })
+    );
+  },
+
+  async generateFragranceImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}/generate-image`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async deleteFragranceAiImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}/ai-image`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async addFragranceImages(id, images) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/${id}/images`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ images }),
+      })
+    );
+  },
+
+  async deleteFragranceImage(imageId) {
+    return handle(
+      await fetch(`${BASE}/api/fragrance-images/${imageId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async getFragranceBrands() {
+    return handle(await fetch(`${BASE}/api/brands/fragrances`, { headers: authHeaders() }));
+  },
+
+  async fragranceAdvice(payload) {
+    return handle(
+      await fetch(`${BASE}/api/fragrances/advice`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  // ---- Sammlungs-Analyse ----
+  async getWatchStats() {
+    return handle(await fetch(`${BASE}/api/analytics/watches`, { headers: authHeaders() }));
+  },
+
+  async getWatchInsights() {
+    return handle(
+      await fetch(`${BASE}/api/analytics/watches/insights`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async getFragranceStats() {
+    return handle(await fetch(`${BASE}/api/analytics/fragrances`, { headers: authHeaders() }));
+  },
+
+  async getFragranceInsights() {
+    return handle(
+      await fetch(`${BASE}/api/analytics/fragrances/insights`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async getPendingReview() {
+    return handle(
+      await fetch(`${BASE}/api/collections/pending-review`, { headers: authHeaders() })
+    );
+  },
+
   async chat(message, history = [], imageFile = null) {
     const form = new FormData();
     form.append("message", message);

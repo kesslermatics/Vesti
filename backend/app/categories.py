@@ -127,7 +127,6 @@ CATEGORY_GROUPS = [
             "Clutch",
             "Brille",
             "Sonnenbrille",
-            "Uhr",
             "Schmuck",
             "Halskette",
             "Armband",
@@ -175,6 +174,11 @@ CATEGORY_GROUPS = [
 
 # Flache Liste aller Kategorien (fuer die KI und DB-Validierung)
 CATEGORIES = [item for group in CATEGORY_GROUPS for item in group["items"]]
+
+# Uhren werden nicht mehr als Kleidungskategorie gefuehrt, sondern in der
+# eigenen Tabelle `watches` (siehe watches.py). Diese Kategorien stammen aus
+# der Zeit davor und werden beim Start einmalig migriert.
+LEGACY_WATCH_CATEGORIES = ["Uhr", "Armbanduhr", "Smartwatch", "Taschenuhr"]
 
 # Kategorienspezifische Detail-Felder fuer Schritt 2
 CATEGORY_DETAILS = {
@@ -261,7 +265,6 @@ CATEGORY_DETAILS = {
     "Clutch": ["verschluss", "größe"],
     "Brille": ["form", "gestell", "gläser"],
     "Sonnenbrille": ["form", "uv_schutz", "polarisiert"],
-    "Uhr": ["art", "armband", "wasserdicht"],
     "Schmuck": ["art", "verschluss"],
     "Halskette": ["länge", "verschluss", "anhänger"],
     "Armband": ["verschluss", "größe"],

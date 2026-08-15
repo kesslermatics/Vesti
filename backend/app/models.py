@@ -2,7 +2,16 @@ from datetime import datetime, timezone
 
 from PIL import Image
 from io import BytesIO
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    JSON,
+    LargeBinary,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -87,6 +96,12 @@ class User(Base):
     items: Mapped[list["ClothingItem"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
+    watches: Mapped[list["Watch"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan"
+    )
+    fragrances: Mapped[list["Fragrance"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan"
+    )
 
 
 class ClothingItem(Base):
@@ -156,3 +171,185 @@ class ItemImage(Base):
     thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
 
     item: Mapped["ClothingItem"] = relationship(back_populates="extra_images")
+
+
+class Watch(Base):
+    """Eine Uhr der Sammlung.
+
+    Uhren haben mit Kleidung kaum gemeinsame Attribute (kein Schnitt, keine
+    Konfektionsgroesse), deshalb eine eigene Tabelle statt einer Kategorie in
+    `clothing_items`.
+    """
+
+    __tablename__ = "watches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    # --- Identifikation ---
+    name: Mapped[str] = mapped_column(String(160), default="")
+    brand: Mapped[str] = mapped_column(String(120), default="", index=True)
+    model: Mapped[str] = mapped_column(String(160), default="")
+    reference: Mapped[str] = mapped_column(String(80), default="")
+    year: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    # --- Technik ---
+    movement: Mapped[str] = mapped_column(String(60), default="")
+    case_material: Mapped[str] = mapped_column(String(60), default="")
+    case_diameter: Mapped[float] = mapped_column(Float, nullable=True)   # mm
+    case_thickness: Mapped[float] = mapped_column(Float, nullable=True)  # mm
+    lug_width: Mapped[float] = mapped_column(Float, nullable=True)       # mm
+    crystal: Mapped[str] = mapped_column(String(60), default="")
+    water_resistance: Mapped[int] = mapped_column(Integer, nullable=True)  # Meter
+    complications: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
+    # --- Optik ---
+    dial_color: Mapped[str] = mapped_column(String(60), default="")
+    band_type: Mapped[str] = mapped_column(String(60), default="")
+    band_material: Mapped[str] = mapped_column(String(60), default="")
+    band_color: Mapped[str] = mapped_column(String(60), default="")
+    clasp: Mapped[str] = mapped_column(String(60), default="")
+
+    # --- Einsatz ---
+    style: Mapped[str] = mapped_column(String(60), default="")
+    occasions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
+    # --- Sammler-Infos ---
+    condition: Mapped[str] = mapped_column(String(60), default="")
+    box_papers: Mapped[str] = mapped_column(String(60), default="")
+    purchase_date: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    purchase_price: Mapped[float] = mapped_column(Float, nullable=True)
+    current_value: Mapped[float] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    serviced_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    service_interval_years: Mapped[int] = mapped_column(Integer, nullable=True)
+    warranty_until: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    # --- Freitext ---
+    description: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    favorite: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    # Aus der Kleidungs-Garderobe migriert und noch nicht per KI neu erfasst
+    needs_review: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- Bilder ---
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
+    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    owner: Mapped["User"] = relationship(back_populates="watches")
+    extra_images: Mapped[list["WatchImage"]] = relationship(
+        back_populates="watch",
+        cascade="all, delete-orphan",
+        order_by="WatchImage.position",
+    )
+
+
+class WatchImage(Base):
+    """Zusatzaufnahmen einer Uhr (Gehaeuseboden, Armband, Box ...)."""
+
+    __tablename__ = "watch_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    watch_id: Mapped[int] = mapped_column(
+        ForeignKey("watches.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+
+    watch: Mapped["Watch"] = relationship(back_populates="extra_images")
+
+
+class Fragrance(Base):
+    """Ein Duft der Sammlung."""
+
+    __tablename__ = "fragrances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    # --- Identifikation ---
+    name: Mapped[str] = mapped_column(String(160), default="")
+    brand: Mapped[str] = mapped_column(String(120), default="", index=True)
+    line: Mapped[str] = mapped_column(String(160), default="")
+    concentration: Mapped[str] = mapped_column(String(60), default="")
+    year: Mapped[int] = mapped_column(Integer, nullable=True)
+    perfumer: Mapped[str] = mapped_column(String(160), default="")
+    audience: Mapped[str] = mapped_column(String(30), default="")
+
+    # --- Duftprofil ---
+    family: Mapped[str] = mapped_column(String(60), default="", index=True)
+    secondary_family: Mapped[str] = mapped_column(String(60), default="")
+    top_notes: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    heart_notes: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    base_notes: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    sillage: Mapped[str] = mapped_column(String(60), default="")
+    longevity: Mapped[str] = mapped_column(String(60), default="")
+
+    # --- Einsatz ---
+    occasions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    seasons: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    time_of_day: Mapped[str] = mapped_column(String(30), default="")
+
+    # --- Bestand ---
+    bottle_size: Mapped[int] = mapped_column(Integer, nullable=True)   # ml
+    fill_level: Mapped[int] = mapped_column(Integer, nullable=True)    # Prozent 0-100
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    batch_code: Mapped[str] = mapped_column(String(60), default="")
+    purchase_date: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    purchase_price: Mapped[float] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    opened_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    # --- Freitext ---
+    description: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    favorite: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    needs_review: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- Bilder ---
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
+    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    owner: Mapped["User"] = relationship(back_populates="fragrances")
+    extra_images: Mapped[list["FragranceImage"]] = relationship(
+        back_populates="fragrance",
+        cascade="all, delete-orphan",
+        order_by="FragranceImage.position",
+    )
+
+
+class FragranceImage(Base):
+    """Zusatzaufnahmen eines Dufts (Etikett, Verpackung, Batch-Code ...)."""
+
+    __tablename__ = "fragrance_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    fragrance_id: Mapped[int] = mapped_column(
+        ForeignKey("fragrances.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+
+    fragrance: Mapped["Fragrance"] = relationship(back_populates="extra_images")

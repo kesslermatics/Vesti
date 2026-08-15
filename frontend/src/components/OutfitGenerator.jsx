@@ -3,7 +3,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../api";
 import { SelectField, TextField } from "./Field";
 
-export default function OutfitGenerator({ meta, onItemClick }) {
+export default function OutfitGenerator({
+  meta,
+  onItemClick,
+  onWatchClick,
+  onFragranceClick,
+  useAiImages = false,
+}) {
   const [occasion, setOccasion] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -145,6 +151,9 @@ export default function OutfitGenerator({ meta, onItemClick }) {
                 idx={idx}
                 occasion={occasion}
                 onItemClick={onItemClick}
+                onWatchClick={onWatchClick}
+                onFragranceClick={onFragranceClick}
+                useAiImages={useAiImages}
               />
             ))}
           </div>
@@ -173,8 +182,54 @@ export default function OutfitGenerator({ meta, onItemClick }) {
   );
 }
 
+// Vorschau-URL eines Vorschlags. In Outfit-Vorschlägen wird das KI-inszenierte
+// Bild bevorzugt: einheitliche Studiofotos lassen eine Kombination als Ganzes
+// erkennen, gemischte Handyaufnahmen wirken unruhig.
+function suggestionThumb(entry, useAiImages) {
+  if (entry.has_ai_image) {
+    return entry.ai_thumbnail_url || entry.ai_image_url;
+  }
+  return entry.thumbnail_url || entry.image_url;
+}
+
+// Uhr oder Duft als Zeile unter dem Outfit
+function ExtraRow({ label, icon, entry, onClick, useAiImages }) {
+  if (!entry) return null;
+  return (
+    <button
+      onClick={() => onClick?.(entry.watch_id ?? entry.fragrance_id)}
+      className="w-full flex items-center gap-3 text-left rounded-xl bg-sand-50 p-2.5 hover:bg-sand-100 transition"
+    >
+      <img
+        src={suggestionThumb(entry, useAiImages)}
+        alt={entry.name}
+        className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-white"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-ink-700/40">
+          {icon} {label}
+        </p>
+        <p className="text-sm font-medium text-ink-900 truncate">
+          {entry.brand ? `${entry.brand} ${entry.name}` : entry.name}
+        </p>
+        {entry.reason && (
+          <p className="text-xs text-ink-700/60 leading-snug mt-0.5">{entry.reason}</p>
+        )}
+      </div>
+    </button>
+  );
+}
+
 // Einzelnes Outfit mit optionaler KI-Anprobe
-function OutfitCard({ outfit, idx, occasion, onItemClick }) {
+function OutfitCard({
+  outfit,
+  idx,
+  occasion,
+  onItemClick,
+  onWatchClick,
+  onFragranceClick,
+  useAiImages,
+}) {
   const [tryon, setTryon] = useState(null); // { base64, mime }
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -235,7 +290,7 @@ function OutfitCard({ outfit, idx, occasion, onItemClick }) {
           >
             <div className="aspect-square rounded-xl overflow-hidden bg-sand-50 shadow-sm">
               <img
-                src={item.image_url}
+                src={suggestionThumb(item, useAiImages)}
                 alt={item.name}
                 className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
               />
@@ -246,6 +301,26 @@ function OutfitCard({ outfit, idx, occasion, onItemClick }) {
           </button>
         ))}
       </div>
+
+      {/* Uhr und Duft zum Look */}
+      {(outfit.watch || outfit.fragrance) && (
+        <div className="space-y-2">
+          <ExtraRow
+            label="Passende Uhr"
+            icon="⌚"
+            entry={outfit.watch}
+            onClick={onWatchClick}
+            useAiImages={useAiImages}
+          />
+          <ExtraRow
+            label="Passender Duft"
+            icon="🧴"
+            entry={outfit.fragrance}
+            onClick={onFragranceClick}
+            useAiImages={useAiImages}
+          />
+        </div>
+      )}
 
       {err && (
         <div className="rounded-xl bg-clay-500/10 text-clay-600 text-xs px-3 py-2">{err}</div>
