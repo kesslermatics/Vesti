@@ -4,7 +4,7 @@ import { api, auth } from "./api";
 import AddItem from "./components/AddItem";
 import AddCollectionItem from "./components/AddCollectionItem";
 import ItemDetail from "./components/ItemDetail";
-import { FragranceDetail, WatchDetail } from "./components/CollectionDetail";
+import { AccessoryDetail, FragranceDetail, WatchDetail } from "./components/CollectionDetail";
 import CollectionView from "./components/CollectionView";
 import Auth from "./components/Auth";
 import Profile from "./components/Profile";
@@ -33,18 +33,21 @@ const TABS = [
 const KIND = {
   CLOTHING: "clothing",
   WATCHES: "watches",
+  ACCESSORIES: "accessories",
   FRAGRANCES: "fragrances",
 };
 
 const KINDS = [
-  { id: KIND.CLOTHING, label: "Kleidung", icon: "👕" },
-  { id: KIND.WATCHES, label: "Uhren", icon: "⌚" },
-  { id: KIND.FRAGRANCES, label: "Düfte", icon: "🧴" },
+  { id: KIND.CLOTHING,   label: "Kleidung",    icon: "👕" },
+  { id: KIND.WATCHES,    label: "Uhren",        icon: "⌚" },
+  { id: KIND.ACCESSORIES, label: "Accessoires", icon: "💎" },
+  { id: KIND.FRAGRANCES, label: "Düfte",        icon: "🧴" },
 ];
 
 const ADD_LABEL = {
-  [KIND.CLOTHING]: "Teil hinzufügen",
-  [KIND.WATCHES]: "Uhr hinzufügen",
+  [KIND.CLOTHING]:   "Teil hinzufügen",
+  [KIND.WATCHES]:    "Uhr hinzufügen",
+  [KIND.ACCESSORIES]: "Accessoire hinzufügen",
   [KIND.FRAGRANCES]: "Duft hinzufügen",
 };
 
@@ -337,6 +340,7 @@ export default function App() {
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
   const [watches, setWatches] = useState([]);
+  const [accessories, setAccessories] = useState([]);
   const [fragrances, setFragrances] = useState([]);
   const [pending, setPending] = useState({ watches: 0, fragrances: 0, total: 0 });
   const [loading, setLoading] = useState(true);
@@ -344,6 +348,7 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedWatch, setSelectedWatch] = useState(null);
+  const [selectedAccessory, setSelectedAccessory] = useState(null);
   const [selectedFragrance, setSelectedFragrance] = useState(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -351,13 +356,14 @@ export default function App() {
   const [greeting, setGreeting] = useState(getRandomGreeting());
 
   const anyOverlay =
-    selectedItem || selectedWatch || selectedFragrance || addOpen || profileOpen;
+    selectedItem || selectedWatch || selectedAccessory || selectedFragrance || addOpen || profileOpen;
 
   // Android/iOS Zurück-Button: Overlay schließen statt App verlassen
   useEffect(() => {
     function onPopState() {
       if (selectedItem) return setSelectedItem(null);
       if (selectedWatch) return setSelectedWatch(null);
+      if (selectedAccessory) return setSelectedAccessory(null);
       if (selectedFragrance) return setSelectedFragrance(null);
       if (profileOpen) return setProfileOpen(false);
       if (addOpen) return setAddOpen(false);
@@ -416,16 +422,18 @@ export default function App() {
     setLoading(true);
     (async () => {
       try {
-        const [m, list, watchList, fragranceList] = await Promise.all([
+        const [m, list, watchList, fragranceList, accessoryList] = await Promise.all([
           api.getMeta(),
           api.listItems(),
           api.listWatches(),
           api.listFragrances(),
+          api.listAccessories(),
         ]);
         setMeta(m);
         setItems(list);
         setWatches(watchList);
         setFragrances(fragranceList);
+        setAccessories(accessoryList);
         api.getPendingReview().then(setPending).catch(() => {});
       } catch (err) {
         setError(err.message || "Verbindung zum Server fehlgeschlagen.");
@@ -440,9 +448,11 @@ export default function App() {
     setUser(null);
     setItems([]);
     setWatches([]);
+    setAccessories([]);
     setFragrances([]);
     setSelectedItem(null);
     setSelectedWatch(null);
+    setSelectedAccessory(null);
     setSelectedFragrance(null);
     setAccountOpen(false);
     setProfileOpen(false);
@@ -486,6 +496,7 @@ export default function App() {
   const counts = {
     [KIND.CLOTHING]: items.reduce((sum, i) => sum + (i.quantity || 1), 0),
     [KIND.WATCHES]: watches.length,
+    [KIND.ACCESSORIES]: accessories.length,
     [KIND.FRAGRANCES]: fragrances.length,
   };
 
@@ -499,6 +510,7 @@ export default function App() {
   }
 
   const addWatch = upsert(setWatches);
+  const addAccessory = upsert(setAccessories);
   const addFragrance = upsert(setFragrances);
 
   function refreshPending() {
@@ -528,7 +540,10 @@ export default function App() {
     .join("");
 
   const addKind =
-    kind === KIND.WATCHES ? "watch" : kind === KIND.FRAGRANCES ? "fragrance" : "clothing";
+    kind === KIND.WATCHES ? "watch"
+    : kind === KIND.ACCESSORIES ? "accessory"
+    : kind === KIND.FRAGRANCES ? "fragrance"
+    : "clothing";
 
   return (
     <div className="min-h-full pb-32">
@@ -593,6 +608,16 @@ export default function App() {
                   </p>
                 </div>
               )}
+              {pending.total > 0 && kind === KIND.ACCESSORIES && pending.accessories > 0 && (
+                <div className="rounded-2xl bg-amber-400/10 px-4 py-3 mb-6">
+                  <p className="text-sm text-ink-800">
+                    {pending.accessories === 1
+                      ? "Ein Accessoire wurde aus der Kleidungs-Garderobe übernommen und wartet noch auf die KI-Erfassung."
+                      : `${pending.accessories} Accessoires wurden aus der Kleidungs-Garderobe übernommen und warten noch auf die KI-Erfassung.`}{" "}
+                    Öffne es und tippe auf „Jetzt per KI erfassen".
+                  </p>
+                </div>
+              )}
 
               {/* ── Kleidung ── */}
               {kind === KIND.CLOTHING && (
@@ -636,6 +661,10 @@ export default function App() {
                         onWatchClick={(id) => {
                           const w = watches.find((it) => it.id === id);
                           if (w) setSelectedWatch(w);
+                        }}
+                        onAccessoryClick={(id) => {
+                          const a = accessories.find((it) => it.id === id);
+                          if (a) setSelectedAccessory(a);
                         }}
                         onFragranceClick={(id) => {
                           const f = fragrances.find((it) => it.id === id);
@@ -788,6 +817,25 @@ export default function App() {
                 />
               )}
 
+              {/* ── Accessoires ── */}
+              {kind === KIND.ACCESSORIES && (
+                <CollectionView
+                  kind="accessory"
+                  entries={accessories}
+                  meta={meta}
+                  loading={loading}
+                  viewMode={viewMode}
+                  setViewMode={setViewMode}
+                  useAiImages={useAiImages}
+                  setUseAiImages={setUseAiImages}
+                  onSelect={setSelectedAccessory}
+                  onSelectId={(id) => {
+                    const a = accessories.find((it) => it.id === id);
+                    if (a) setSelectedAccessory(a);
+                  }}
+                />
+              )}
+
               {/* ── Düfte ── */}
               {kind === KIND.FRAGRANCES && (
                 <CollectionView
@@ -820,6 +868,7 @@ export default function App() {
               <Analytics
                 hasWatches={watches.length > 0}
                 hasFragrances={fragrances.length > 0}
+                hasAccessories={accessories.length > 0}
               />
             </motion.div>
           )}
@@ -923,6 +972,7 @@ export default function App() {
           meta={meta}
           onCreated={(entry) => {
             if (addKind === "watch") addWatch(entry);
+            else if (addKind === "accessory") addAccessory(entry);
             else addFragrance(entry);
           }}
         />
@@ -957,6 +1007,22 @@ export default function App() {
         onUpdated={(updated) => {
           addWatch(updated);
           setSelectedWatch(updated);
+          refreshPending();
+        }}
+      />
+
+      <AccessoryDetail
+        accessory={selectedAccessory}
+        meta={meta}
+        onClose={() => setSelectedAccessory(null)}
+        onDeleted={(id) => {
+          setAccessories((prev) => prev.filter((a) => a.id !== id));
+          setSelectedAccessory(null);
+          refreshPending();
+        }}
+        onUpdated={(updated) => {
+          addAccessory(updated);
+          setSelectedAccessory(updated);
           refreshPending();
         }}
       />

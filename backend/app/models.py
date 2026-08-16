@@ -102,6 +102,9 @@ class User(Base):
     fragrances: Mapped[list["Fragrance"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
+    accessories: Mapped[list["Accessory"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan"
+    )
 
 
 class ClothingItem(Base):
@@ -353,3 +356,90 @@ class FragranceImage(Base):
     thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
 
     fragrance: Mapped["Fragrance"] = relationship(back_populates="extra_images")
+
+
+class Accessory(Base):
+    """Schmuck, Taschen und Brillen – alles was kein Kleidungsstück, keine Uhr und kein Duft ist.
+
+    Ein gemeinsames Modell mit `type`-Feld ist ausreichend, weil die Attribute sich
+    stark überschneiden. Spezifische Felder (Ringweite, Linseneigenschaften, Schliesse)
+    werden in dem JSON-Feld `details` gespeichert, damit das Modell schlank bleibt.
+    """
+
+    __tablename__ = "accessories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    # --- Identifikation ---
+    name: Mapped[str] = mapped_column(String(160), default="")
+    brand: Mapped[str] = mapped_column(String(120), default="", index=True)
+    # Typ aus ACCESSORY_TYPES, z.B. "Ring", "Handtasche", "Sonnenbrille"
+    type: Mapped[str] = mapped_column(String(80), default="", index=True)
+    model: Mapped[str] = mapped_column(String(160), default="")
+    reference: Mapped[str] = mapped_column(String(80), default="")
+    year: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    # --- Material & Optik ---
+    material: Mapped[str] = mapped_column(String(80), default="")
+    secondary_material: Mapped[str] = mapped_column(String(80), default="")
+    color: Mapped[str] = mapped_column(String(60), default="")
+    stone: Mapped[str] = mapped_column(String(80), default="")
+    # Freie Angaben je nach Typ: Ringweite, Kettenlänge, Glasfarbe, Bügelmaterial…
+    details: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    # --- Stil & Einsatz ---
+    style: Mapped[str] = mapped_column(String(60), default="")
+    occasions: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
+    # --- Zustand & Kauf ---
+    condition: Mapped[str] = mapped_column(String(60), default="")
+    authenticity_card: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    purchase_date: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    purchase_price: Mapped[float] = mapped_column(Float, nullable=True)
+    current_value: Mapped[float] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    warranty_until: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    # --- Freitext ---
+    description: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    favorite: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    needs_review: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # --- Bilder ---
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
+    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    owner: Mapped["User"] = relationship(back_populates="accessories")
+    extra_images: Mapped[list["AccessoryImage"]] = relationship(
+        back_populates="accessory",
+        cascade="all, delete-orphan",
+        order_by="AccessoryImage.position",
+    )
+
+
+class AccessoryImage(Base):
+    """Zusatzaufnahmen eines Accessoires."""
+
+    __tablename__ = "accessory_images"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    accessory_id: Mapped[int] = mapped_column(
+        ForeignKey("accessories.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
+    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+
+    accessory: Mapped["Accessory"] = relationship(back_populates="extra_images")

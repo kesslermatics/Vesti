@@ -711,23 +711,105 @@ function FragranceAnalytics() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  Accessoires
+// ══════════════════════════════════════════════════════════════
+
+function AccessoryAnalytics() {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .getAccessoryStats()
+      .then(setStats)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Spinner />;
+
+  if (stats?.empty) {
+    return (
+      <EmptyState
+        icon="💎"
+        title="Noch keine Accessoires"
+        text="Sobald du Schmuck, Taschen oder Brillen erfasst hast, siehst du hier die Verteilung und Analyse."
+      />
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-4"
+    >
+      {error && (
+        <div className="rounded-xl bg-clay-500/10 text-clay-600 text-sm px-4 py-3">{error}</div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="Accessoires gesamt" value={stats.total} accent />
+        <StatCard label="Verschiedene Marken" value={stats.diversity?.brands ?? stats.brands?.length ?? 0} />
+      </div>
+
+      {stats.needs_review > 0 && (
+        <div className="rounded-2xl bg-amber-400/10 px-4 py-3">
+          <p className="text-sm text-ink-800">
+            {stats.needs_review} {stats.needs_review === 1 ? "Eintrag wartet" : "Einträge warten"} noch auf die KI-Erfassung.
+          </p>
+        </div>
+      )}
+
+      <Section title="Nach Gruppe">
+        <BarList data={stats.groups} emptyText="Noch nichts erfasst" />
+      </Section>
+
+      <Section title="Typen" hint="Die häufigsten Arten">
+        <BarList data={stats.types} emptyText="Noch nichts erfasst" />
+      </Section>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Section title="Marken">
+          <BarList data={stats.brands} emptyText="Noch keine Marken" />
+        </Section>
+        <Section title="Materialien">
+          <BarList data={stats.materials} emptyText="Noch nichts erfasst" />
+        </Section>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Section title="Stile">
+          <BarList data={stats.styles} emptyText="Noch nichts erfasst" />
+        </Section>
+        <Section title="Anlässe">
+          <BarList data={stats.occasions} emptyText="Noch nichts erfasst" />
+        </Section>
+      </div>
+    </motion.div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 //  Umschalter über den drei Auswertungen
 // ══════════════════════════════════════════════════════════════
 
 const VIEWS = [
   { id: "wardrobe", label: "Kleidung", icon: "👕" },
   { id: "watches", label: "Uhren", icon: "⌚" },
+  { id: "accessories", label: "Accessoires", icon: "💎" },
   { id: "fragrances", label: "Düfte", icon: "🧴" },
 ];
 
-export default function Analytics({ hasWatches = false, hasFragrances = false }) {
+export default function Analytics({ hasWatches = false, hasFragrances = false, hasAccessories = false }) {
   const [view, setView] = useState("wardrobe");
 
-  // Leere Sammlungen gar nicht anbieten, solange nichts drin ist
   const available = VIEWS.filter(
     (v) =>
       v.id === "wardrobe" ||
       (v.id === "watches" && hasWatches) ||
+      (v.id === "accessories" && hasAccessories) ||
       (v.id === "fragrances" && hasFragrances)
   );
 
@@ -767,6 +849,7 @@ export default function Analytics({ hasWatches = false, hasFragrances = false })
       <AnimatePresence mode="wait">
         {view === "wardrobe" && <WardrobeAnalytics key="wardrobe" />}
         {view === "watches" && <WatchAnalytics key="watches" />}
+        {view === "accessories" && <AccessoryAnalytics key="accessories" />}
         {view === "fragrances" && <FragranceAnalytics key="fragrances" />}
       </AnimatePresence>
     </div>

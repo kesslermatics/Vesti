@@ -155,12 +155,12 @@ class RecommendedFragrance(BaseModel):
 
 class RecommendResponse(BaseModel):
     pieces: list[RecommendedPiece]
-    suitability: str = "geht"          # "perfekt" | "geht" | "notlösung" | "ungeeignet"
+    suitability: str = "geht"
     suitability_reason: str = ""
     explanation: str
-    # Passende Uhr und passender Duft aus den anderen Sammlungen
     watch: RecommendedWatch | None = None
     fragrance: RecommendedFragrance | None = None
+    accessory: "RecommendedAccessory | None" = None
 
 
 # ---------- Shopping ----------
@@ -363,3 +363,83 @@ class FragranceAnalyzeResponse(BaseModel):
     images: list[ImageUpload] = []
     confidence: str = ""
     identified: bool = False
+
+
+# ---------- Accessoires ----------
+class AccessoryMetadata(BaseModel):
+    """Von der KI extrahierte / vom User bestätigte Accessoire-Daten."""
+
+    name: str = ""
+    brand: str = ""
+    type: str = ""
+    model: str = ""
+    reference: str = ""
+    year: int | None = None
+
+    material: str = ""
+    secondary_material: str = ""
+    color: str = ""
+    stone: str = ""
+    details: dict = {}
+
+    style: str = ""
+    occasions: list[str] = []
+
+    condition: str = ""
+    authenticity_card: int = 0
+    purchase_date: datetime | None = None
+    purchase_price: float | None = None
+    current_value: float | None = None
+    currency: str = "EUR"
+    warranty_until: datetime | None = None
+
+    description: str = ""
+    notes: str = ""
+
+
+class AccessoryCreate(AccessoryMetadata):
+    image_base64: str
+    image_mime: str = "image/jpeg"
+    extra_images: list[ImageUpload] = []
+    ai_image_base64: str = ""
+    ai_image_mime: str = "image/png"
+
+
+class AccessoryOut(AccessoryMetadata):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    image_url: str = ""
+    thumbnail_url: str = ""
+    image_urls: list[str] = []
+    thumbnail_urls: list[str] = []
+    ai_image_url: str = ""
+    ai_thumbnail_url: str = ""
+    has_ai_image: bool = False
+    favorite: bool = False
+    needs_review: bool = False
+    created_at: datetime
+
+
+class AccessoryAnalyzeResponse(BaseModel):
+    """Ergebnis der Accessoire-Bildanalyse (noch nicht gespeichert)."""
+
+    metadata: AccessoryMetadata
+    images: list[ImageUpload] = []
+    confidence: str = ""
+    identified: bool = False
+
+
+class RecommendedAccessory(BaseModel):
+    """Zum Outfit passendes Accessoire aus der Sammlung."""
+
+    accessory_id: int
+    name: str
+    type: str = ""
+    brand: str = ""
+    image_url: str = ""
+    thumbnail_url: str = ""
+    ai_image_url: str = ""
+    ai_thumbnail_url: str = ""
+    has_ai_image: bool = False
+    reason: str = ""

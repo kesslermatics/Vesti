@@ -1,6 +1,7 @@
 import {
   ChipMultiSelect,
   DateField,
+  GroupedSelectField,
   NumberField,
   SelectField,
   TextField,
@@ -506,6 +507,168 @@ export function FillLevelSlider({ value, onChange }) {
           Wird als knapp gewertet und in der Analyse als Nachkauf-Hinweis angezeigt.
         </p>
       )}
+    </div>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+//  Accessoires-Formular
+// ══════════════════════════════════════════════════════════════════════
+
+export function AccessoryFields({ data, update, meta, brands }) {
+  const a = meta?.accessories || {};
+
+  // Shot-Hints je nach Typ, damit der Hinweis oben im Wizard passt
+  // (wird hier nicht benötigt, nur als Referenz)
+
+  return (
+    <div className="space-y-6">
+      <Section title="Identifikation">
+        <Wide>
+          <TextField
+            label="Name"
+            value={data.name}
+            onChange={(v) => update("name", v)}
+            placeholder="z.B. Goldener Solitär-Ring oder Louis Vuitton Neverfull MM"
+          />
+        </Wide>
+        <BrandField
+          value={data.brand}
+          onChange={(v) => update("brand", v)}
+          mine={brands?.mine || []}
+          suggestions={brands?.suggestions || []}
+        />
+        <Wide>
+          <GroupedSelectField
+            label="Typ"
+            value={data.type}
+            onChange={(v) => update("type", v)}
+            groups={a.type_groups || []}
+          />
+        </Wide>
+        <TextField
+          label="Modell"
+          value={data.model}
+          onChange={(v) => update("model", v)}
+          placeholder="z.B. Neverfull MM oder Wayfarer"
+        />
+        <TextField
+          label="Referenz / Seriennummer"
+          value={data.reference}
+          onChange={(v) => update("reference", v)}
+        />
+        <NumberField
+          label="Baujahr / Ära"
+          value={data.year}
+          onChange={(v) => update("year", v)}
+          step="1"
+        />
+      </Section>
+
+      <Section title="Material & Optik">
+        <TextField
+          label="Hauptmaterial"
+          value={data.material}
+          onChange={(v) => update("material", v)}
+          placeholder="z.B. Gelbgold, Kalbsleder, Acetat"
+        />
+        <TextField
+          label="Zweites Material"
+          value={data.secondary_material}
+          onChange={(v) => update("secondary_material", v)}
+          placeholder="z.B. Leder-Futter, Edelstahl-Scharniere"
+        />
+        <TextField
+          label="Farbe"
+          value={data.color}
+          onChange={(v) => update("color", v)}
+        />
+        <TextField
+          label="Stein / Besatz"
+          value={data.stone}
+          onChange={(v) => update("stone", v)}
+          placeholder="z.B. Diamant, Saphir, ohne Stein"
+        />
+      </Section>
+
+      <Section title="Einsatz">
+        <Wide>
+          <SelectField
+            label="Stil"
+            value={data.style}
+            onChange={(v) => update("style", v)}
+            options={a.styles || []}
+          />
+        </Wide>
+        <Wide>
+          <ChipMultiSelect
+            label="Anlässe"
+            value={data.occasions}
+            onChange={(v) => update("occasions", v)}
+            options={a.occasions || []}
+          />
+        </Wide>
+      </Section>
+
+      <Section title="Zustand & Kauf">
+        <TextField
+          label="Zustand"
+          value={data.condition}
+          onChange={(v) => update("condition", v)}
+          placeholder="z.B. neu, sehr gut, gebraucht"
+        />
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="auth_card"
+            checked={!!data.authenticity_card}
+            onChange={(e) => update("authenticity_card", e.target.checked ? 1 : 0)}
+            className="rounded accent-clay-500"
+          />
+          <label htmlFor="auth_card" className="text-sm text-ink-800">
+            Echtheitszertifikat / Papiere vorhanden
+          </label>
+        </div>
+        <DateField
+          label="Kaufdatum"
+          value={data.purchase_date}
+          onChange={(v) => update("purchase_date", v)}
+        />
+        <NumberField
+          label="Kaufpreis"
+          value={data.purchase_price}
+          onChange={(v) => update("purchase_price", v)}
+          unit={data.currency || "EUR"}
+          step="1"
+        />
+        <NumberField
+          label="Aktueller Wert"
+          value={data.current_value}
+          onChange={(v) => update("current_value", v)}
+          unit={data.currency || "EUR"}
+          step="1"
+        />
+        <DateField
+          label="Garantie bis"
+          value={data.warranty_until}
+          onChange={(v) => update("warranty_until", v)}
+        />
+      </Section>
+
+      <Section title="Notizen" columns={1}>
+        <TextField
+          label="Beschreibung"
+          value={data.description}
+          onChange={(v) => update("description", v)}
+        />
+        <TextField
+          label="Eigene Notizen"
+          value={data.notes}
+          onChange={(v) => update("notes", v)}
+          placeholder="z.B. Geschenk zur Hochzeit, braucht Schuhputze"
+        />
+      </Section>
     </div>
   );
 }

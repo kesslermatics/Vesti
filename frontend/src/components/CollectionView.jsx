@@ -18,6 +18,8 @@ function CollectionCard({ entry, kind, onSelect, viewMode, useAiImages }) {
   const title =
     kind === "watch"
       ? entry.name || [entry.brand, entry.model].filter(Boolean).join(" ") || "Uhr"
+      : kind === "accessory"
+      ? entry.name || [entry.brand, entry.type].filter(Boolean).join(" ") || "Accessoire"
       : entry.name || "Duft";
 
   const subtitle =
@@ -25,6 +27,8 @@ function CollectionCard({ entry, kind, onSelect, viewMode, useAiImages }) {
       ? [entry.style, entry.case_diameter ? `${entry.case_diameter} mm` : ""]
           .filter(Boolean)
           .join(" · ")
+      : kind === "accessory"
+      ? [entry.brand, entry.type].filter(Boolean).join(" · ")
       : [entry.brand, entry.family].filter(Boolean).join(" · ");
 
   // Warnhinweise, die man auf der Karte sehen will
@@ -384,6 +388,26 @@ const GROUPERS = {
     emptyTitle: "Noch keine Uhren erfasst",
     emptyText:
       "Füge deine erste Uhr hinzu. Ein Foto vom Zifferblatt genügt – steht die Referenznummer auf dem Gehäuseboden, erkennt die KI das exakte Modell.",
+  },
+  accessory: {
+    key: (a) => {
+      // Nach Gruppe (Schmuck/Taschen/Brillen/Sonstiges) gruppieren
+      const type = a.type || "Sonstiges Accessoire";
+      const groups = {
+        Schmuck: ["Ring","Ehering","Verlobungsring","Halskette","Kette","Anhänger","Armband","Armreif","Armkette","Ohrringe","Ohrring (einzeln)","Ohrstecker","Creolen","Brosche","Anstecker","Manschettenknöpfe","Krawattennadel","Krawattenklammer","Körperschmuck","Haarschmuck","Haarreif","Haarspange"],
+        Taschen: ["Handtasche","Umhängetasche","Schultertasche","Crossbody-Bag","Tote Bag","Clutch","Abendtasche","Minibag","Bucket Bag","Hobo Bag","Shopper","Rucksack","Laptoprucksack","Daypack","Gürteltasche / Fanny Pack","Bauchtasche","Aktentasche","Dokumententasche","Brieftasche","Portemonnaie","Kartenetui","Schlüsseletui","Kulturbeutel","Weekender","Duffle Bag","Sporttasche"],
+        Brillen: ["Sonnenbrille","Lesebrille","Computerbrille","Korrektionsbrille","Sportbrille","Skibrille","Pilotenbrille","Aviatorbrille","Retro-Brille","Cat-Eye-Brille","Browline-Brille","Hornbrille","Clubmaster","Wayfarer"],
+      };
+      for (const [group, types] of Object.entries(groups)) {
+        if (types.includes(type)) return group;
+      }
+      return "Sonstiges";
+    },
+    order: () => ["Schmuck", "Taschen", "Brillen", "Sonstiges"],
+    emptyIcon: "💎",
+    emptyTitle: "Noch keine Accessoires erfasst",
+    emptyText:
+      "Füge dein erstes Accessoire hinzu – Schmuck, Tasche oder Brille. Die KI liest Logo und Prägungen und kennt dann oft Marke und Materialien.",
   },
   fragrance: {
     key: (f) => f.family || "Ohne Familie",

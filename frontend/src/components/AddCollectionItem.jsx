@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api, fileToBase64 } from "../api";
-import { FragranceFields, WatchFields } from "./CollectionForm";
+import { AccessoryFields, FragranceFields, WatchFields } from "./CollectionForm";
 
 const STEP = {
   CAPTURE: "capture",
@@ -45,7 +45,39 @@ const KINDS = {
     unidentifiedHint:
       "Das genaue Modell war nicht lesbar. Die Angaben sind optisch geschätzt, prüfe sie bitte.",
   },
+  accessory: {
+    title: "Neues Accessoire",
+    icon: "💎",
+    emptyHint:
+      "Fotografiere das Stück von vorne. Bei Taschen hilft ein Blick aufs Innenfutter-Label (Marke). Bei Schmuck zeigt die KI den Punzenstempel. Bei Brillen liest sie Modell und Größe vom Bügel.",
+    hintPlaceholder: "z.B. Rolex Datejust, Louis Vuitton Neverfull, Ray-Ban Wayfarer",
+    analysisRows: [
+      "Logo, Prägungen und Labels lesen",
+      "Material, Typ und Details ergänzen",
+      "Stück in Szene setzen",
+    ],
+    fields: AccessoryFields,
+    loadBrands: () => api.getAccessoryBrands(),
+    analyze: (payload) => api.analyzeAccessory(payload),
+    shot: (data) =>
+      api.analyzeAccessoryShot({
+        images: data.images,
+        type: data.type,
+        brand: data.brand,
+        name: data.name,
+        color: data.color,
+        material: data.material,
+      }),
+    create: (payload) => api.createAccessory(payload),
+    label: (data) =>
+      [data.brand, data.name || data.type].filter(Boolean).join(" ") || "Accessoire",
+    identifiedHint: "Marke/Modell erkannt – Details stammen aus dem Modellwissen.",
+    unidentifiedHint:
+      "Das Stück war nicht eindeutig lesbar. Felder die nicht erkannt wurden sind leer – trag sie gerne selbst ein.",
+  },
   fragrance: {
+    title: "Neuer Duft",
+    icon: "🧴",
     title: "Neuer Duft",
     icon: "🧴",
     emptyHint:

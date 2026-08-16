@@ -431,6 +431,125 @@ export const api = {
     return handle(await fetch(`${BASE}/api/brands/watches`, { headers: authHeaders() }));
   },
 
+  // ---- Accessoires ----
+  async listAccessories() {
+    return handle(await fetch(`${BASE}/api/accessories`, { headers: authHeaders() }));
+  },
+
+  async analyzeAccessory(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/accessory`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async analyzeAccessoryShot(payload) {
+    return handle(
+      await fetch(`${BASE}/api/analyze/accessory-shot`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async createAccessory(payload) {
+    return handle(
+      await fetch(`${BASE}/api/accessories`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async updateAccessory(id, payload) {
+    return handle(
+      await fetch(`${BASE}/api/accessories/${id}`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async deleteAccessory(id) {
+    return handle(
+      await fetch(`${BASE}/api/accessories/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async toggleAccessoryFavorite(id, favorite) {
+    return handle(
+      await fetch(`${BASE}/api/accessories/${id}/favorite`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ favorite }),
+      })
+    );
+  },
+
+  async reanalyzeAccessory(id, regenerateImage = true) {
+    return handle(
+      await fetch(`${BASE}/api/accessories/${id}/reanalyze`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ regenerate_image: regenerateImage }),
+      })
+    );
+  },
+
+  async generateAccessoryImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/accessories/${id}/generate-image`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async deleteAccessoryAiImage(id) {
+    return handle(
+      await fetch(`${BASE}/api/accessories/${id}/ai-image`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async addAccessoryImages(id, images) {
+    return handle(
+      await fetch(`${BASE}/api/accessories/${id}/images`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ images }),
+      })
+    );
+  },
+
+  async deleteAccessoryImage(imageId) {
+    return handle(
+      await fetch(`${BASE}/api/accessory-images/${imageId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async getAccessoryBrands() {
+    return handle(await fetch(`${BASE}/api/brands/accessories`, { headers: authHeaders() }));
+  },
+
+  async getAccessoryStats() {
+    return handle(await fetch(`${BASE}/api/analytics/accessories`, { headers: authHeaders() }));
+  },
+
   // ---- Düfte ----
   async listFragrances() {
     return handle(await fetch(`${BASE}/api/fragrances`, { headers: authHeaders() }));

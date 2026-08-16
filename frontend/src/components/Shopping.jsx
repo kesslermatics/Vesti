@@ -20,12 +20,14 @@ const DOMAINS = [
   { id: "", label: "Alles" },
   { id: "Kleidung", label: "👕 Kleidung" },
   { id: "Uhr", label: "⌚ Uhren" },
+  { id: "Accessoire", label: "💎 Accessoires" },
   { id: "Duft", label: "🧴 Düfte" },
 ];
 
 const DOMAIN_BADGE = {
   Kleidung: "👕",
   Uhr: "⌚",
+  Accessoire: "💎",
   Duft: "🧴",
 };
 

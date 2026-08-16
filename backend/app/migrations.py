@@ -69,8 +69,20 @@ EXPECTED_COLUMNS: dict[str, list[tuple[str, str, str, str | None, bool]]] = {
         ("ai_image_mime",     "VARCHAR(60)",  "VARCHAR(60)",  "'image/png'", False),
         ("ai_thumbnail_data", "BYTEA",        "BLOB",         None,          True),
     ],
-    "fragrance_images": [
+    "accessory_images": [
         ("thumbnail_data", "BYTEA", "BLOB", None, True),
+    ],
+    "accessories": [
+        ("occasions",           "JSONB",        "JSON",         "'[]'",        False),
+        ("details",             "JSONB",        "JSON",         "'{}'",        False),
+        ("authenticity_card",   "INTEGER",      "INTEGER",      "0",           False),
+        ("needs_review",        "INTEGER",      "INTEGER",      "0",           False),
+        ("favorite",            "INTEGER",      "INTEGER",      "0",           False),
+        ("currency",            "VARCHAR(10)",  "VARCHAR(10)",  "'EUR'",       False),
+        ("thumbnail_data",      "BYTEA",        "BLOB",         None,          True),
+        ("ai_image_data",       "BYTEA",        "BLOB",         None,          True),
+        ("ai_image_mime",       "VARCHAR(60)",  "VARCHAR(60)",  "'image/png'", False),
+        ("ai_thumbnail_data",   "BYTEA",        "BLOB",         None,          True),
     ],
 }
 
@@ -222,4 +234,115 @@ def migrate_legacy_watches(engine: Engine) -> int:
         return 0
 
     logger.info("Migration: %s Uhr(en) aus der Garderobe in die Sammlung umgezogen", moved)
+    return moved
+
+
+def migrate_legacy_accessories(engine: Engine) -> int:
+    """Zieht Schmuck, Taschen und Brillen aus clothing_items in accessories um.
+
+    Analog zur Uhren-Migration: Bilder werden uebernommen, spezifische Felder
+    bleiben leer und werden mit needs_review=1 zur KI-Neuanalyse markiert.
+    Idempotent – entfernte Kategorien kommen nicht wieder.
+    """
+    from sqlalchemy.orm import Session
+
+    from . import models
+    from .accessories import LEGACY_ACCESSORY_CATEGORIES, accessory_group
+
+    # Kategorie -> Typ-Mapping: direkte Uebertragung soweit moeglich
+    CATEGORY_TO_TYPE: dict[str, str] = {
+        "Schmuck": "Sonstiges Accessoire",
+        "Halskette": "Halskette",
+        "Armband": "Armband",
+        "Ring": "Ring",
+        "Ohrringe": "Ohrringe",
+        "Tasche": "Umhängetasche",
+        "Handtasche": "Handtasche",
+        "Umhängetasche": "Umhängetasche",
+        "Rucksack": "Rucksack",
+        "Clutch": "Clutch",
+        "Brille": "Korrektionsbrille",
+        "Sonnenbrille": "Sonnenbrille",
+        "Einstecktuch": "Einstecktuch",
+    }
+
+    with engine.connect() as probe:
+        tables = set(inspect(probe).get_table_names())
+    if "clothing_items" not in tables or "accessories" not in tables:
+        return 0
+
+    moved = 0
+    try:
+        with Session(engine) as db:
+            legacy = db.scalars(
+                select(models.ClothingItem).where(
+                    models.ClothingItem.category.in_(LEGACY_ACCESSORY_CATEGORIES)
+                )
+            ).all()
+
+            if not legacy:
+                return 0
+
+            total = len(legacy)
+            logger.info(
+                "Migration: %s Accessoire(s) gefunden – starte Umzug", total
+            )
+
+            for idx, item in enumerate(legacy, start=1):
+                item_type = CATEGORY_TO_TYPE.get(item.category, "Sonstiges Accessoire")
+                logger.info(
+                    "Migration: Accessoire %s/%s – %s → %s (user_id=%s)",
+                    idx, total, item.name or item.category,
+                    item_type, item.user_id,
+                )
+
+                acc = models.Accessory(
+                    user_id=item.user_id,
+                    name=item.name or item.category,
+                    brand=item.brand or "",
+                    type=item_type,
+                    color=item.color or "",
+                    material=item.material or "",
+                    description=item.description or "",
+                    style=item.style or "",
+                    occasions=[item.occasion] if item.occasion else [],
+                    details={},
+                    favorite=1 if item.favorite else 0,
+                    image_data=item.image_data,
+                    image_mime=item.image_mime or "image/jpeg",
+                    thumbnail_data=item.thumbnail_data,
+                    ai_image_data=item.ai_image_data,
+                    ai_image_mime=item.ai_image_mime or "image/png",
+                    ai_thumbnail_data=item.ai_thumbnail_data,
+                    created_at=item.created_at,
+                    needs_review=1,
+                )
+
+                for extra in item.extra_images or []:
+                    if not extra.image_data:
+                        continue
+                    acc.extra_images.append(
+                        models.AccessoryImage(
+                            position=extra.position,
+                            image_data=extra.image_data,
+                            image_mime=extra.image_mime or "image/jpeg",
+                            thumbnail_data=extra.thumbnail_data,
+                        )
+                    )
+
+                db.add(acc)
+                db.delete(item)
+                moved += 1
+
+            logger.info("Migration: Committing %s Accessoire(s) …", moved)
+            db.commit()
+            logger.info("Migration: Accessoires-Commit erfolgreich.")
+
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Accessoires-Migration fehlgeschlagen: %s", exc)
+        return 0
+
+    logger.info(
+        "Migration: %s Accessoire(s) aus der Garderobe in die Sammlung umgezogen", moved
+    )
     return moved

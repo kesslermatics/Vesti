@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../api";
-import { FillLevelSlider, FragranceFields, WatchFields } from "./CollectionForm";
+import { AccessoryFields, FillLevelSlider, FragranceFields, WatchFields } from "./CollectionForm";
 
 // ── Bild-Galerie: KI-Foto zuerst, dann die eigenen Aufnahmen ──
 function Gallery({ entry, label }) {
@@ -669,6 +669,97 @@ export function FragranceDetail({ fragrance, meta, onClose, onDeleted, onUpdated
                 Deine Notiz
               </p>
               <p className="text-sm text-ink-800">{fragrance.notes}</p>
+            </div>
+          )}
+        </DetailShell>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Accessoire
+// ══════════════════════════════════════════════════════════════════════
+
+export function AccessoryDetail({ accessory, meta, onClose, onDeleted, onUpdated }) {
+  return (
+    <AnimatePresence>
+      {accessory && (
+        <DetailShell
+          key={accessory.id}
+          entry={accessory}
+          title={
+            accessory.name ||
+            [accessory.brand, accessory.type].filter(Boolean).join(" ") ||
+            "Accessoire"
+          }
+          subtitle={[accessory.brand, accessory.type].filter(Boolean).join(" · ")}
+          meta={meta}
+          onClose={onClose}
+          onDeleted={onDeleted}
+          onUpdated={onUpdated}
+          editFields={AccessoryFields}
+          loadBrands={() => api.getAccessoryBrands()}
+          onSave={(draft) => api.updateAccessory(accessory.id, draft)}
+          onReanalyze={(regen) => api.reanalyzeAccessory(accessory.id, regen)}
+          onGenerateImage={() => api.generateAccessoryImage(accessory.id)}
+          onToggleFavorite={(fav) => api.toggleAccessoryFavorite(accessory.id, fav)}
+          onDeleteEntry={() => api.deleteAccessory(accessory.id)}
+        >
+          {accessory.description && (
+            <p className="text-sm text-ink-800 leading-relaxed">{accessory.description}</p>
+          )}
+
+          <GlassCard className="p-4 divide-y divide-sand-100">
+            <div>
+              <Row label="Typ" value={accessory.type} />
+              <Row label="Modell" value={accessory.model} />
+              <Row label="Referenz" value={accessory.reference} />
+              <Row label="Baujahr" value={accessory.year} />
+              <Row label="Stil" value={accessory.style} />
+            </div>
+            <div className="pt-2">
+              <Row label="Material" value={accessory.material} />
+              <Row label="Zweites Material" value={accessory.secondary_material} />
+              <Row label="Farbe" value={accessory.color} />
+              <Row label="Stein / Besatz" value={accessory.stone} />
+            </div>
+            <div className="pt-2">
+              <Row label="Zustand" value={accessory.condition} />
+              {accessory.authenticity_card ? (
+                <div className="flex items-center gap-2 py-1.5">
+                  <span className="text-xs text-ink-700/50">Echtheitszertifikat</span>
+                  <span className="text-sm text-emerald-600 font-medium">vorhanden ✓</span>
+                </div>
+              ) : null}
+              <Row label="Gekauft" value={formatDate(accessory.purchase_date)} />
+              <Row
+                label="Kaufpreis"
+                value={money(accessory.purchase_price, accessory.currency)}
+              />
+              <Row
+                label="Aktueller Wert"
+                value={money(accessory.current_value, accessory.currency)}
+              />
+              <Row label="Garantie bis" value={formatDate(accessory.warranty_until)} />
+            </div>
+          </GlassCard>
+
+          {accessory.occasions?.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-ink-700/60 uppercase tracking-wide">
+                Passt zu
+              </p>
+              <Chips items={accessory.occasions} />
+            </div>
+          )}
+
+          {accessory.notes && (
+            <div className="rounded-2xl bg-sand-100 px-4 py-3">
+              <p className="text-xs font-medium text-ink-700/60 uppercase tracking-wide mb-1">
+                Deine Notiz
+              </p>
+              <p className="text-sm text-ink-800">{accessory.notes}</p>
             </div>
           )}
         </DetailShell>

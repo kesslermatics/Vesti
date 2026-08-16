@@ -10,6 +10,20 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from .accessories import (
+    ACCESSORY_CONDITIONS,
+    ACCESSORY_MATERIALS,
+    ACCESSORY_OCCASIONS,
+    ACCESSORY_STONES,
+    ACCESSORY_STYLES,
+    ACCESSORY_TYPE_GROUPS,
+    ACCESSORY_TYPES,
+    BAG_CLOSURES,
+    FRAME_SHAPES,
+    LENS_COLORS,
+    UV_PROTECTIONS,
+    accessory_group,
+)
 from .categories import CATEGORIES, CATEGORY_DETAILS, MATERIALS, OCCASIONS, SEASONS, STYLES
 from .config import get_settings
 from .fragrances import (
@@ -529,6 +543,7 @@ def recommend_outfit(
     watches: list[dict[str, Any]] | None = None,
     fragrances: list[dict[str, Any]] | None = None,
     weather: str = "",
+    accessories: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Empfiehlt passende Teile aus der Garderobe und urteilt ehrlich, ob das Outfit taugt.
 
@@ -536,6 +551,7 @@ def recommend_outfit(
     """
     watches = watches or []
     fragrances = fragrances or []
+    accessories = accessories or []
 
     wardrobe_lines = []
     for idx, it in enumerate(wardrobe):
@@ -569,14 +585,27 @@ def recommend_outfit(
   "fragrance_index": Index des passenden Dufts als Zahl, oder null wenn keiner passt,
   "fragrance_reason": "ein Satz: warum dieser Duft zum Anlass und zur Tageszeit passt","""
 
+    accessory_section = ""
+    accessory_json = ""
+    if accessories:
+        accessory_section = f"\nAccessoires des Nutzers (nummeriert):\n{_accessories_block(accessories)}\n"
+        accessory_json = """
+  "accessory_index": Index des passenden Accessoires als Zahl, oder null wenn keines passt,
+  "accessory_reason": "ein Satz: warum dieses Accessoire den Look vervollständigt","""
+
     extras_hint = ""
-    if watches or fragrances:
+    if watches or fragrances or accessories:
+        parts_hint = []
+        if watches:
+            parts_hint.append("eine Uhr")
+        if accessories:
+            parts_hint.append("ein Accessoire (Ring, Tasche, Brille…)")
+        if fragrances:
+            parts_hint.append("einen Duft")
         extras_hint = (
-            "\n- Wähle zusätzlich eine passende Uhr und einen passenden Duft aus den unten "
-            "gelisteten Sammlungen. Begründe beides kurz über Stil, Anlass und Wirkung – "
-            "nicht über den Preis.\n"
-            "- Wenn nichts davon zum Look passt, setze den jeweiligen Index auf null. "
-            "Eine unpassende Empfehlung ist schlechter als keine."
+            "\n- Ergänze den Look zusätzlich um " + ", ".join(parts_hint) + " aus den unten "
+            "gelisteten Sammlungen. Begründe kurz über Stil, Anlass und Wirkung.\n"
+            "- Wenn nichts passt, setze den jeweiligen Index auf null."
         )
 
     weather_block_hint = ""
@@ -598,7 +627,7 @@ Zusatzwunsch: {note or 'keiner'}
 
 Verfügbare Teile in der Garderobe (nummeriert):
 {wardrobe_text}
-{watch_section}{fragrance_section}
+{watch_section}{accessory_section}{fragrance_section}
 WICHTIG:
 - Sei ehrlich. Wenn das Basis-Teil oder die verfügbaren Kombinationen für den Anlass nicht wirklich geeignet sind, sag das klar.
 - Berücksichtige ALLE Kategorien: Oberteile, Hosen, Schuhe, Jacken, Gürtel, Accessoires, etc.
@@ -609,7 +638,7 @@ Wähle die am besten passenden Teile aus der Garderobe (Basis-Teil nicht nochmal
 
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
-  "item_indices": [Liste der Indizes als Zahlen, 0-basiert],{watch_json}{fragrance_json}
+  "item_indices": [Liste der Indizes als Zahlen, 0-basiert],{watch_json}{accessory_json}{fragrance_json}
   "suitability": "perfekt" | "geht" | "notlösung" | "ungeeignet",
   "suitability_reason": "ein ehrlicher Satz: warum das Outfit für den Anlass (nicht) passt",
   "explanation": "2-4 Sätze auf Deutsch: wie das Outfit wirkt, was gut passt, was fehlt oder stört, und welchen Tipp du für diesen Anlass noch hast. Nenne Teile nur beim Namen!"
@@ -639,6 +668,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
     watch_pos = _pick_index(data.get("watch_index"), watches)
     fragrance_pos = _pick_index(data.get("fragrance_index"), fragrances)
+    accessory_pos = _pick_index(data.get("accessory_index"), accessories)
 
     return {
         "item_ids": item_ids,
@@ -651,6 +681,10 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
         "fragrance_reason": (
             str(data.get("fragrance_reason", "")) if fragrance_pos is not None else ""
         ),
+        "accessory_id": accessories[accessory_pos]["id"] if accessory_pos is not None else None,
+        "accessory_reason": (
+            str(data.get("accessory_reason", "")) if accessory_pos is not None else ""
+        ),
     }
 
 
@@ -662,6 +696,7 @@ def generate_outfits(
     watches: list[dict[str, Any]] | None = None,
     fragrances: list[dict[str, Any]] | None = None,
     weather: str = "",
+    accessories: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Generiert mehrere komplette Outfit-Vorschläge aus der Garderobe.
 
@@ -673,6 +708,7 @@ def generate_outfits(
 
     watches = watches or []
     fragrances = fragrances or []
+    accessories = accessories or []
 
     wardrobe_lines = []
     for idx, it in enumerate(wardrobe):
@@ -700,13 +736,28 @@ def generate_outfits(
       "fragrance_index": Index des passenden Dufts als Zahl, oder null,
       "fragrance_reason": "ein kurzer Satz: warum dieser Duft zum Look passt","""
 
+    accessory_section = ""
+    accessory_json = ""
+    if accessories:
+        accessory_section = f"\nAccessoires des Nutzers (nummeriert):\n{_accessories_block(accessories)}\n"
+        accessory_json = """
+      "accessory_index": Index des passenden Accessoires als Zahl, oder null,
+      "accessory_reason": "ein kurzer Satz: warum dieses Accessoire den Look vervollständigt","""
+
     extras_hint = ""
-    if watches or fragrances:
+    if watches or fragrances or accessories:
+        parts_hint = []
+        if watches:
+            parts_hint.append("eine passende Uhr")
+        if accessories:
+            parts_hint.append("ein passendes Accessoire (Schmuck, Tasche oder Brille)")
+        if fragrances:
+            parts_hint.append("einen passenden Duft")
         extras_hint = (
-            "\n- Ergänze jedes Outfit um eine passende Uhr und einen passenden Duft aus den "
-            "unten gelisteten Sammlungen. Eine Taucheruhr gehört nicht zum Anzug, ein "
+            "\n- Ergänze jedes Outfit um " + ", ".join(parts_hint) + " aus den unten "
+            "gelisteten Sammlungen. Eine Taucheruhr gehört nicht zum Anzug, ein "
             "schwerer Abendduft nicht ins Büro – achte darauf.\n"
-            "- Variiere auch hier: nicht bei jedem Outfit dieselbe Uhr und derselbe Duft.\n"
+            "- Variiere: nicht bei jedem Outfit dieselbe Uhr, dasselbe Accessoire oder derselbe Duft.\n"
             "- Passt nichts, setze den jeweiligen Index auf null."
         )
 
@@ -743,7 +794,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
   "outfits": [
     {{
-      "item_indices": [Liste von Indizes als Zahlen - mindestens 2, besser 3-5 Teile pro Outfit],{watch_json}{fragrance_json}
+      "item_indices": [Liste von Indizes als Zahlen - mindestens 2, besser 3-5 Teile pro Outfit],{watch_json}{accessory_json}{fragrance_json}
       "title": "kurzer Titel, z.B. 'Smart Casual Look' oder 'Relaxed Weekend'",
       "why": "1-2 Sätze: warum diese Kombination für den Anlass passt. Nenne Teile nur beim Namen!"
     }}
@@ -778,6 +829,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
         watch_pos = _pick_index(outfit.get("watch_index"), watches)
         fragrance_pos = _pick_index(outfit.get("fragrance_index"), fragrances)
+        accessory_pos = _pick_index(outfit.get("accessory_index"), accessories)
 
         outfits.append({
             "item_ids": item_ids,
@@ -792,6 +844,12 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
             ),
             "fragrance_reason": (
                 str(outfit.get("fragrance_reason", "")) if fragrance_pos is not None else ""
+            ),
+            "accessory_id": (
+                accessories[accessory_pos]["id"] if accessory_pos is not None else None
+            ),
+            "accessory_reason": (
+                str(outfit.get("accessory_reason", "")) if accessory_pos is not None else ""
             ),
         })
 
@@ -870,6 +928,7 @@ def shopping_suggestions(
     history: list[dict[str, str]] | None = None,
     watches: list[dict[str, Any]] | None = None,
     fragrances: list[dict[str, Any]] | None = None,
+    accessories: list[dict[str, Any]] | None = None,
     domain: str = "",
 ) -> dict[str, Any]:
     """Schlaegt sinnvolle Ergaenzungen vor – Kleidung, Uhren und Duefte.
@@ -878,6 +937,7 @@ def shopping_suggestions(
     """
     watches = watches or []
     fragrances = fragrances or []
+    accessories = accessories or []
 
     history_block = ""
     if history:
@@ -897,6 +957,12 @@ def shopping_suggestions(
             "Beschränke dich AUSSCHLIESSLICH auf Düfte. Setze bei jedem Vorschlag "
             '"domain" auf "Duft" und in "category" die Duftfamilie (z.B. "Holzig").'
         )
+    elif domain == "Accessoire":
+        domain_hint = (
+            "Beschränke dich AUSSCHLIESSLICH auf Accessoires (Schmuck, Taschen, Brillen). "
+            'Setze bei jedem Vorschlag "domain" auf "Accessoire" und in "category" den '
+            "Accessoire-Typ (z.B. \"Ring\", \"Handtasche\", \"Sonnenbrille\")."
+        )
     elif domain == "Kleidung":
         domain_hint = (
             "Beschränke dich AUSSCHLIESSLICH auf Kleidung. Setze bei jedem Vorschlag "
@@ -904,13 +970,13 @@ def shopping_suggestions(
         )
     else:
         domain_hint = (
-            "Du darfst Kleidung, Uhren und Düfte vorschlagen – gewichte danach, wo die "
+            "Du darfst Kleidung, Uhren, Accessoires und Düfte vorschlagen – gewichte danach, wo die "
             "größte Lücke ist. Setze bei jedem Vorschlag das Feld \"domain\" passend auf "
-            '"Kleidung", "Uhr" oder "Duft". Wenn eine Sammlung noch leer ist, ist ein '
+            '"Kleidung", "Uhr", "Accessoire" oder "Duft". Wenn eine Sammlung noch leer ist, ist ein '
             "solider Grundstein dort oft wertvoller als das fünfte ähnliche Kleidungsstück."
         )
 
-    prompt = f"""Du bist ein erfahrener Personal Shopper – für Mode, Uhren und Düfte.
+    prompt = f"""Du bist ein erfahrener Personal Shopper – für Mode, Uhren, Accessoires und Düfte.
 
 Profil des Nutzers:
 {_profile_block(profile)}
@@ -921,6 +987,9 @@ Aktuelle Garderobe (mit Stückzahlen):
 Uhrensammlung:
 {_watches_block(watches, with_ids=False)}
 
+Accessoires:
+{_accessories_block(accessories, with_ids=False)}
+
 Duftsammlung:
 {_fragrances_block(fragrances, with_ids=False)}
 
@@ -928,7 +997,8 @@ Wunsch / Richtung des Nutzers: {direction or 'keine besondere Vorgabe'}{history_
 
 Analysiere den gesamten Besitz: Was fehlt? Wo gibt es Lücken? Wovon hat der Nutzer schon zu viel?
 Achte auf die Stückzahlen – wenn jemand acht schwarze T-Shirts hat, braucht er kein neuntes.
-Bei Uhren gilt dasselbe für Redundanz im Stil, bei Düften für Redundanz in Familie und Basisnoten.
+Bei Uhren gilt dasselbe für Redundanz im Stil, bei Düften für Redundanz in Familie und Basisnoten,
+bei Accessoires für zu viele ähnliche Schmuckstücke oder Taschen.
 
 {domain_hint}
 
@@ -940,8 +1010,8 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "suggestions": [
     {{
       "title": "konkreter Vorschlag, z.B. 'Beige Chino, regular fit' oder 'Frischer Zitrus-EdT für den Sommer'",
-      "domain": "Kleidung" | "Uhr" | "Duft",
-      "category": "bei Kleidung eine aus: {', '.join(CATEGORIES[:25])}... / bei Uhren der Uhrentyp / bei Düften die Duftfamilie",
+      "domain": "Kleidung" | "Uhr" | "Accessoire" | "Duft",
+      "category": "bei Kleidung eine aus: {', '.join(CATEGORIES[:25])}... / bei Uhren der Uhrentyp / bei Accessoires der Typ / bei Düften die Duftfamilie",
       "color": "bei Kleidung und Uhren die empfohlene Farbe, bei Düften leer",
       "material": "bei Kleidung und Uhren das empfohlene Material, bei Düften die Konzentration",
       "reason": "2-3 Sätze auf Deutsch: warum genau das fehlt und was es ermöglicht",
@@ -968,7 +1038,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
                 "material": str(s.get("material", "")),
                 "reason": str(s.get("reason", "")),
                 "combines_with": [str(c) for c in combines] if isinstance(combines, list) else [],
-                "domain": raw_domain if raw_domain in {"Kleidung", "Uhr", "Duft"} else "Kleidung",
+                "domain": raw_domain if raw_domain in {"Kleidung", "Uhr", "Duft", "Accessoire"} else "Kleidung",
             }
         )
 
@@ -983,14 +1053,16 @@ def fit_check(
     image_mime: str = "image/jpeg",
     watches: list[dict[str, Any]] | None = None,
     fragrances: list[dict[str, Any]] | None = None,
+    accessories: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Prueft ein Produkt aus einem Online-Shop gegen Besitz und Profil.
 
-    Erkennt selbst, ob es um ein Kleidungsstueck, eine Uhr oder einen Duft geht,
+    Erkennt selbst, ob es um ein Kleidungsstueck, eine Uhr, ein Accessoire oder einen Duft geht,
     und bewertet entsprechend.
     """
     watches = watches or []
     fragrances = fragrances or []
+    accessories = accessories or []
 
     wrist = (profile.get("measurements") or {}).get("wrist")
     wrist_block = (
@@ -1016,10 +1088,13 @@ Aktuelle Garderobe (mit Stückzahlen):
 Uhrensammlung:
 {_watches_block(watches, with_ids=False)}
 
+Accessoires:
+{_accessories_block(accessories, with_ids=False)}
+
 Duftsammlung:
 {_fragrances_block(fragrances, with_ids=False)}
 
-Erkenne zuerst, um welche Art Produkt es sich handelt: Kleidungsstück, Uhr oder Duft.
+Erkenne zuerst, um welche Art Produkt es sich handelt: Kleidungsstück, Uhr, Accessoire (Schmuck/Tasche/Brille) oder Duft.
 Bewerte dann, wie gut es zum bestehenden Besitz und zum Nutzer passt.
 
 Bei einem KLEIDUNGSSTÜCK berücksichtige:
@@ -1036,6 +1111,13 @@ Bei einer UHR berücksichtige:
   vorhandenen Stil?
 - Passt Werk, Material und Wasserdichtigkeit zum tatsächlichen Einsatz?
 - Passt das Armband farblich zu den Schuhen und Gürteln in der Garderobe?
+
+Bei einem ACCESSOIRE berücksichtige:
+- Passt das Stück zu vorhandenen Kleidungsstücken, Uhren und anderen Accessoires?
+- Bei Schmuck: Material und Metallfarbe zur Uhr und anderen Ringen/Ketten stimmig?
+- Bei Taschen: passt die Größe und der Stil zum Alltagsbedarf und zu Outfits?
+- Bei Brillen: Passform zum Gesichtstyp (aus Profil ableitbar), Stil zu vorhandener Garderobe?
+- Hat der Nutzer schon etwas Ähnliches – z.B. drei schwarze Ledertaschen?
 
 Bei einem DUFT berücksichtige:
 - Duftfamilie und Noten gegen die Sammlung: riecht das für Außenstehende wie etwas,
@@ -1160,6 +1242,7 @@ def chat_with_stylist(
     image_mime: str = "image/jpeg",
     watches: list[dict[str, Any]] | None = None,
     fragrances: list[dict[str, Any]] | None = None,
+    accessories: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Freier Chat mit dem Style-Assistenten.
 
@@ -1168,6 +1251,7 @@ def chat_with_stylist(
     """
     watches = watches or []
     fragrances = fragrances or []
+    accessories = accessories or []
     
     history_block = ""
     if history:
@@ -1207,6 +1291,9 @@ Garderobe des Nutzers:
 Uhren des Nutzers:
 {_watches_block(watches, with_ids=False)}
 
+Accessoires des Nutzers (Schmuck, Taschen, Brillen):
+{_accessories_block(accessories, with_ids=False)}
+
 Düfte des Nutzers:
 {_fragrances_block(fragrances, with_ids=False)}
 
@@ -1220,6 +1307,9 @@ Antworte natürlich, freundlich und hilfreich auf Deutsch. Du kannst:
 - Fragen zu Kleidungsstücken beantworten
 - Zu Uhren beraten: welche Uhr zu welchem Anlass oder Outfit passt, wie ein Durchmesser
   am Handgelenk wirkt, ob eine Kombination stilistisch stimmt
+- Zu Accessoires beraten: welche Tasche zu welchem Outfit passt, ob Schmuck zusammenpasst
+  (Metallfarben, Stil), welche Brillenform zu Gesicht und Anlass passt, ob ein Schmuckstück
+  echt wirkt oder ein Duplikat unter dem was schon vorhanden ist
 - Zu Düften beraten: welcher Duft zu Anlass, Jahreszeit und Tageszeit passt, wie sich
   Duftfamilien und Noten unterscheiden, ob die Sammlung Lücken oder Dopplungen hat,
   wie man dosiert und was sinnvoll layert
@@ -1228,9 +1318,9 @@ Antworte natürlich, freundlich und hilfreich auf Deutsch. Du kannst:
 
 WICHTIG:
 - Beziehe dich bevorzugt auf das, was der Nutzer WIRKLICH besitzt. Nenne alles beim Namen
-  (z.B. "blaues Hemd", "deine Speedmaster", "dein Sauvage"), NIEMALS mit IDs oder Nummern.
+  (z.B. "blaues Hemd", "deine Speedmaster", "deine schwarze Lederhandtasche", "dein Sauvage"), NIEMALS mit IDs oder Nummern.
 - Wenn eine Sammlung leer ist, erfinde nichts hinein. Dann berate allgemein und sag,
-  dass du mit erfassten Uhren oder Düften konkreter helfen könntest.
+  dass du mit erfassten Stücken konkreter helfen könntest.
 - Bei Düften: erfinde keine Duftnoten. Wenn du einen Duft nicht kennst, sag das.
 
 Sei ehrlich aber freundlich. Wenn etwas nicht passt, sag es konstruktiv.
@@ -1891,3 +1981,223 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
         "application": str(data.get("application", "")),
         "gap": str(data.get("gap", "")),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Accessoires
+# ══════════════════════════════════════════════════════════════════════
+
+def analyze_accessory_image(
+    images: list[tuple[bytes, str]] | bytes,
+    filename: str = "upload.jpg",
+    hint: str = "",
+    known_brands: list[str] | None = None,
+) -> dict[str, Any]:
+    """Erkennt ein Accessoire anhand der Aufnahmen.
+
+    Schmuck, Taschen und Brillen sind sehr unterschiedlich – das Modell bestimmt
+    zuerst den Typ und passt den Rest der Extraktion dann daran an. Bei Taschen
+    ist die Marke das Wichtigste (Logo, Prägestempel, Innenfutter-Label). Bei
+    Schmuck zaehlt das Material und ob ein Punzenstempel lesbar ist. Bei Brillen
+    stehen Modell und Bügelprägung im Vordergrund.
+    """
+    parts = _image_parts(images, filename)
+
+    hint_block = (
+        f"\nZusatzinfo vom Nutzer: {hint.strip()}" if hint and hint.strip() else ""
+    )
+    multi_block = (
+        f"\nDir liegen {len(parts)} Aufnahmen desselben Stücks vor. "
+        "Nutze alle: Logo/Prägungen auf Metall, Innenfutter-Label von Taschen, "
+        "Bügel-Gravuren von Brillen, Punzenstempel von Schmuck."
+        if len(parts) > 1
+        else ""
+    )
+    brands_block = ""
+    if known_brands:
+        brands_list = ", ".join(f'"{b}"' for b in known_brands[:30])
+        brands_block = (
+            f"\nBereits bekannte Marken des Nutzers: [{brands_list}]"
+            "\nBevorzuge bei gleicher Marke die dort verwendete Schreibweise."
+        )
+
+    types_sample = ", ".join(ACCESSORY_TYPES[:30]) + " usw."
+    mat_sample = ", ".join(ACCESSORY_MATERIALS[:25]) + " usw."
+
+    prompt = f"""Du bist ein erfahrener Accessoire- und Modeexperte. Analysiere die Aufnahme(n).{multi_block}{hint_block}{brands_block}
+
+VORGEHEN – in dieser Reihenfolge:
+1. Bestimme den Typ: {types_sample}
+2. Lies alles Geschriebene: Logo, Prägung, Modellbezeichnung, Seriennummer, Materialbeschriftung.
+3. Wenn du Marke und Modell dadurch identifizierst, ergänze alle anderen Felder aus deinem
+   Wissen – z.B. welches Material Louis Vuitton Monogram Canvas ist, welche Glasgröße
+   ein Ray-Ban Wayfarer hat, ob ein Ring aus 750er Gold ein bestimmtes Punzenmuster trägt.
+4. Wenn du das Stück nicht sicher identifizieren kannst, schätze optisch. Lass Felder lieber
+   leer als Falsches zu schreiben.
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "identified": true wenn du Marke/Modell erkannt hast, sonst false,
+  "confidence": "hoch" | "mittel" | "niedrig",
+  "name": "sprechender Name, z.B. 'Goldener Solitär-Ring' oder 'Louis Vuitton Neverfull MM'",
+  "brand": "Markenname wenn erkennbar, sonst leer",
+  "type": "einer aus: {types_sample}",
+  "model": "Modellbezeichnung ohne Marke, sonst leer",
+  "reference": "Modellnummer, Seriennummer oder Größenangabe auf dem Bügel (Brillen), sonst leer",
+  "year": Erscheinungsjahr oder Vintage-Ära als Zahl wenn bestimmbar, sonst null,
+  "material": "Hauptmaterial, einer aus: {mat_sample}",
+  "secondary_material": "zweites Material wenn relevant (z.B. Leder-Futter bei Metalltasche), sonst leer",
+  "color": "Hauptfarbe auf Deutsch",
+  "stone": "Edelstein oder 'ohne Stein', einer aus: {', '.join(ACCESSORY_STONES[:15])} usw.",
+  "style": "einer aus: {', '.join(ACCESSORY_STYLES)}",
+  "occasions": ["2-3 passende aus: {', '.join(ACCESSORY_OCCASIONS)}"],
+  "condition": "einer aus: {', '.join(ACCESSORY_CONDITIONS)} – nach sichtbarem Zustand",
+  "details": {{
+    "Brillen → frame_shape": "einer aus: {', '.join(FRAME_SHAPES[:8])} usw.",
+    "Brillen → lens_color": "einer aus: {', '.join(LENS_COLORS[:6])} usw.",
+    "Brillen → uv_protection": "einer aus: {', '.join(UV_PROTECTIONS[:3])} usw.",
+    "Taschen → closure": "einer aus: {', '.join(BAG_CLOSURES[:5])} usw.",
+    "Schmuck → ring_size_eu": "EU-Ringgröße als Zahl wenn lesbar, sonst leer",
+    "Schmuck → necklace_length_cm": "Länge in cm wenn erkennbar, sonst leer"
+  }},
+  "description": "2-3 Sätze auf Deutsch: was dieses Stück charakterisiert und wozu es passt"
+}}
+
+WICHTIG: Fülle 'details' NUR mit den Feldern die für den erkannten Typ relevant sind.
+Ein Ring hat keine Verschlussart, eine Tasche keine Ringgröße."""
+
+    response = _call_with_retry(model=settings.gemini_model, contents=[*parts, prompt])
+    data = _extract_json(response.text or "{}")
+
+    # details-Feld normalisieren: nur echte Werte, keine Platzhalter
+    raw_details = data.get("details") or {}
+    if not isinstance(raw_details, dict):
+        raw_details = {}
+    details = {
+        k: v for k, v in raw_details.items()
+        if v and str(v).strip() and "→" not in k
+    }
+
+    return {
+        "identified": bool(data.get("identified")),
+        "confidence": str(data.get("confidence", "")),
+        "name": str(data.get("name", "")),
+        "brand": str(data.get("brand", "")),
+        "type": str(data.get("type", "")),
+        "model": str(data.get("model", "")),
+        "reference": str(data.get("reference", "")),
+        "year": _int_or_none(data.get("year")),
+        "material": str(data.get("material", "")),
+        "secondary_material": str(data.get("secondary_material", "")),
+        "color": str(data.get("color", "")),
+        "stone": str(data.get("stone", "")),
+        "style": str(data.get("style", "")),
+        "occasions": _str_list_from(data.get("occasions"), ACCESSORY_OCCASIONS),
+        "condition": str(data.get("condition", "")),
+        "details": details,
+        "description": str(data.get("description", "")),
+    }
+
+
+def generate_accessory_shot(
+    images: list[tuple[bytes, str]] | bytes,
+    item_type: str = "",
+    brand: str = "",
+    name: str = "",
+    color: str = "",
+    material: str = "",
+    filename: str = "upload.jpg",
+) -> tuple[bytes, str] | None:
+    """Erzeugt ein Studio-Produktfoto eines Accessoires.
+
+    Je nach Typ unterscheidet sich die optimale Bildgestaltung deutlich:
+    Schmuck braucht makroskopische Beleuchtung, Taschen eine aufgerichtete
+    Dreiviertelansicht, Brillen eine frontale Draufsicht auf neutralem Grund.
+    """
+    if isinstance(images, (bytes, bytearray)):
+        mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+        raw_images: list[tuple[bytes, str]] = [(bytes(images), mime)]
+    else:
+        raw_images = [(d, m or "image/jpeg") for d, m in images if d]
+
+    if not raw_images:
+        return None
+
+    group = accessory_group(item_type) if item_type else "Sonstiges"
+    subject = " ".join(p for p in (brand, name or item_type) if p) or "Accessoire"
+    color_hint = f" in {color}" if color else ""
+    material_hint = f", Material: {material}" if material else ""
+
+    if group == "Schmuck":
+        composition = (
+            "- Makro-Aufnahme, Schmuckstück mittig, leicht angewinkelt für Tiefe.\n"
+            "- Neutrale, sehr helle Unterlage (weiß bis warmweiß).\n"
+            "- Weiches Studiolicht mit gezielten Glanzlichtern auf Metall und Stein.\n"
+            "- Keine Hände, kein Körper, keine Requisiten."
+        )
+    elif group == "Taschen":
+        composition = (
+            "- Tasche aufrecht stehend, leicht angewinkelt (ca. 20°), komplett im Bild.\n"
+            "- Alle Bügel, Riemen und Beschläge sauber ausgelegt oder gestellt.\n"
+            "- Neutrale, sehr helle Unterlage, weicher Schlagschatten darunter.\n"
+            "- Weiches Studiolicht, keine Hände, kein Mensch."
+        )
+    elif group == "Brillen":
+        composition = (
+            "- Brille flach von vorne auf neutralem Hintergrund, Gläser deutlich lesbar.\n"
+            "- Alternativ leicht erhöht auf einem unsichtbaren Brillenständer.\n"
+            "- Weiches Licht ohne Reflexe auf den Gläsern die das Design verdecken.\n"
+            "- Keine Hände, kein Gesicht."
+        )
+    else:
+        composition = (
+            "- Gegenstand mittig, komplett im Bild, neutrale helle Unterlage.\n"
+            "- Weiches Studiolicht, cleane minimalistische Komposition.\n"
+            "- Keine Hände, kein Mensch."
+        )
+
+    prompt = (
+        f"Erstelle ein professionelles Studio-Produktfoto dieses Accessoires "
+        f"({subject}{color_hint}{material_hint}).\n\n"
+        "ABSOLUT WICHTIG – nichts verfälschen:\n"
+        f"- Zeige EXAKT dasselbe Stück wie auf den Referenzfotos: identische Farbe, "
+        "identisches Muster, identische Form, gleiche Logos, Gravuren, Punzen, Nähte "
+        "und alle Details.\n"
+        "- Erfinde nichts dazu und lass nichts weg. Verändere weder Farbton noch "
+        "Proportionen. Es muss zweifelsfrei dasselbe Stück sein.\n\n"
+        f"Bildgestaltung:\n{composition}\n"
+        "- Zentrierte Komposition, quadratischer Bildausschnitt, hochwertig und minimalistisch.\n"
+        "Gib nur das fertige Bild zurück."
+    )
+
+    return _generate_image_http(raw_images, prompt)
+
+
+def _accessories_block(accessories: list[dict[str, Any]], with_ids: bool = True) -> str:
+    """Formatiert die Accessoire-Sammlung fuer den Prompt."""
+    if not accessories:
+        return "(keine Accessoires erfasst)"
+
+    lines = []
+    for idx, a in enumerate(accessories):
+        label = a.get("name") or a.get("type") or "Accessoire"
+        bits = []
+        if a.get("type"):
+            bits.append(a["type"])
+        if a.get("brand"):
+            bits.append(a["brand"])
+        if a.get("material"):
+            bits.append(a["material"])
+        if a.get("color"):
+            bits.append(a["color"])
+        if a.get("stone") and a["stone"] != "ohne Stein":
+            bits.append(a["stone"])
+        if a.get("style"):
+            bits.append(a["style"])
+        occ = a.get("occasions") or []
+        if occ:
+            bits.append("für " + ", ".join(occ[:3]))
+        prefix = f"  {idx}. " if with_ids else "  - "
+        lines.append(f"{prefix}{label} ({', '.join(bits) if bits else 'keine Details'})")
+
+    return "\n".join(lines)

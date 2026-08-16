@@ -20,11 +20,24 @@ from .analytics_collections import (
     expiry_date,
     service_due_date,
 )
+from .accessories import (
+    ACCESSORY_BRANDS,
+    ACCESSORY_OCCASIONS,
+    ACCESSORY_STYLES,
+    ACCESSORY_TYPE_GROUPS,
+    ACCESSORY_TYPES,
+    accessory_group,
+    shot_hints_for,
+)
 from .auth import get_current_user
 from .brands import canonicalize
 from .database import get_db
 from .fragrances import FRAGRANCE_BRANDS
 from .schemas import (
+    AccessoryAnalyzeResponse,
+    AccessoryCreate,
+    AccessoryMetadata,
+    AccessoryOut,
     FragranceAnalyzeResponse,
     FragranceCreate,
     FragranceMetadata,
@@ -1299,17 +1312,566 @@ def fragrance_advice_endpoint(
     }
 
 
+
+# ══════════════════════════════════════════════════════════════════════
+#  Accessoires
+# ══════════════════════════════════════════════════════════════════════
+
+ACCESSORY_FIELDS: dict[str, str] = {
+    "name": "str", "brand": "str", "type": "str", "model": "str",
+    "reference": "str", "material": "str", "secondary_material": "str",
+    "color": "str", "stone": "str", "style": "str",
+    "condition": "str", "currency": "str", "description": "str", "notes": "str",
+    "year": "int", "authenticity_card": "int",
+    "purchase_price": "float", "current_value": "float",
+    "occasions": "list",
+    "purchase_date": "date", "warranty_until": "date",
+}
+
+
+def _accessory_out(request: Request, acc: models.Accessory) -> AccessoryOut:
+    base = api_base(request)
+    out = AccessoryOut.model_validate(acc)
+    out.image_url = f"{base}/api/accessories/{acc.id}/image"
+    out.thumbnail_url = f"{base}/api/accessories/{acc.id}/thumbnail"
+    out.image_urls = [out.image_url] + [
+        f"{base}/api/accessory-images/{img.id}" for img in (acc.extra_images or [])
+    ]
+    out.thumbnail_urls = [out.thumbnail_url] + [
+        f"{base}/api/accessory-images/{img.id}/thumbnail"
+        for img in (acc.extra_images or [])
+    ]
+    if acc.ai_image_data:
+        out.has_ai_image = True
+        out.ai_image_url = f"{base}/api/accessories/{acc.id}/ai-image"
+        out.ai_thumbnail_url = f"{base}/api/accessories/{acc.id}/ai-thumbnail"
+    return out
+
+
+def _accessory_dict(a: models.Accessory) -> dict:
+    return {
+        "id": a.id,
+        "name": a.name,
+        "brand": a.brand,
+        "type": a.type,
+        "model": a.model,
+        "material": a.material,
+        "secondary_material": a.secondary_material,
+        "color": a.color,
+        "stone": a.stone,
+        "style": a.style,
+        "occasions": a.occasions or [],
+        "condition": a.condition,
+        "details": a.details or {},
+        "purchase_date": a.purchase_date,
+        "purchase_price": a.purchase_price,
+        "current_value": a.current_value,
+        "favorite": bool(a.favorite),
+        "needs_review": bool(a.needs_review),
+        "description": a.description,
+        "notes": a.notes,
+        "created_at": a.created_at,
+    }
+
+
+def user_accessories(db: Session, user_id: int) -> list[dict]:
+    rows = db.scalars(
+        select(models.Accessory)
+        .where(models.Accessory.user_id == user_id)
+        .order_by(models.Accessory.created_at.desc())
+    ).all()
+    return [_accessory_dict(a) for a in rows]
+
+
+# ── Marken ──
+
+@router.get("/api/brands/accessories")
+def accessory_brands_endpoint(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    mine = _collection_brands(db, models.Accessory, user.id)
+    mine_lower = {b.lower() for b in mine}
+    return {
+        "mine": mine,
+        "suggestions": [b for b in ACCESSORY_BRANDS if b.lower() not in mine_lower],
+    }
+
+
+# ── Analyse ──
+
+@router.post("/api/analyze/accessory", response_model=AccessoryAnalyzeResponse)
+def analyze_accessory(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    images = decode_image_payload(payload)
+    known = _collection_brands(db, models.Accessory, user.id)
+
+    try:
+        data = gemini_service.analyze_accessory_image(
+            images, hint=payload.get("hint", ""), known_brands=known
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
+
+    identified = data.pop("identified", False)
+    confidence = data.pop("confidence", "")
+    if data.get("brand"):
+        from .brands import canonicalize
+        data["brand"] = canonicalize(data["brand"], known + ACCESSORY_BRANDS)
+
+    return AccessoryAnalyzeResponse(
+        metadata=AccessoryMetadata(**data),
+        images=[
+            ImageUpload(image_base64=base64.b64encode(d).decode(), image_mime=m)
+            for d, m in images
+        ],
+        confidence=confidence,
+        identified=identified,
+    )
+
+
+@router.post("/api/analyze/accessory-shot")
+def analyze_accessory_shot(
+    payload: dict,
+    user: models.User = Depends(get_current_user),
+):
+    images = decode_image_payload(payload)
+    try:
+        result = gemini_service.generate_accessory_shot(
+            images,
+            item_type=payload.get("type", ""),
+            brand=payload.get("brand", ""),
+            name=payload.get("name", ""),
+            color=payload.get("color", ""),
+            material=payload.get("material", ""),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise_image_error(exc)
+
+    if not result:
+        raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
+
+    data, mime = result
+    return {
+        "ai_image_base64": base64.b64encode(data).decode(),
+        "ai_image_mime": mime,
+    }
+
+
+# ── CRUD ──
+
+@router.get("/api/accessories", response_model=list[AccessoryOut])
+def list_accessories(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    rows = db.scalars(
+        select(models.Accessory)
+        .where(models.Accessory.user_id == user.id)
+        .order_by(models.Accessory.created_at.desc())
+    ).all()
+    return [_accessory_out(request, a) for a in rows]
+
+
+@router.post("/api/accessories", response_model=AccessoryOut)
+def create_accessory(
+    payload: AccessoryCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    from .brands import canonicalize
+    image_bytes = models._compress_image(decode_b64(payload.image_base64))
+    known = _collection_brands(db, models.Accessory, user.id)
+    brand = canonicalize(payload.brand, known + ACCESSORY_BRANDS) if payload.brand else ""
+
+    data = payload.model_dump(
+        exclude={"image_base64", "image_mime", "extra_images", "ai_image_base64", "ai_image_mime"}
+    )
+    data["brand"] = brand
+    data["authenticity_card"] = 1 if data.get("authenticity_card") else 0
+
+    acc = models.Accessory(
+        user_id=user.id,
+        image_data=image_bytes,
+        image_mime=payload.image_mime or "image/jpeg",
+        thumbnail_data=models._create_thumbnail(image_bytes),
+        **data,
+    )
+
+    if payload.ai_image_base64:
+        ai_bytes = decode_b64(payload.ai_image_base64, "KI-Bilddaten")
+        acc.ai_image_data = ai_bytes
+        acc.ai_image_mime = payload.ai_image_mime or "image/png"
+        acc.ai_thumbnail_data = models._create_thumbnail(ai_bytes)
+
+    for idx, extra in enumerate(payload.extra_images or []):
+        if not extra.image_base64:
+            continue
+        extra_bytes = decode_b64(extra.image_base64, "Zusatzbild")
+        acc.extra_images.append(
+            models.AccessoryImage(
+                position=idx,
+                image_data=models._compress_image(extra_bytes),
+                image_mime=extra.image_mime or "image/jpeg",
+                thumbnail_data=models._create_thumbnail(extra_bytes),
+            )
+        )
+
+    db.add(acc)
+    db.commit()
+    db.refresh(acc)
+    return _accessory_out(request, acc)
+
+
+@router.patch("/api/accessories/{acc_id}", response_model=AccessoryOut)
+def update_accessory(
+    acc_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    from .brands import canonicalize
+    acc = _get_owned(db, models.Accessory, acc_id, user.id)
+    _apply_updates(acc, payload, ACCESSORY_FIELDS)
+
+    if "details" in payload and isinstance(payload["details"], dict):
+        merged = dict(acc.details or {})
+        merged.update(payload["details"])
+        acc.details = merged
+
+    if acc.brand:
+        known = _collection_brands(db, models.Accessory, user.id)
+        acc.brand = canonicalize(acc.brand, known + ACCESSORY_BRANDS)
+
+    acc.needs_review = 0
+    db.commit()
+    db.refresh(acc)
+    return _accessory_out(request, acc)
+
+
+@router.patch("/api/accessories/{acc_id}/favorite", response_model=AccessoryOut)
+def toggle_accessory_favorite(
+    acc_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    acc = _get_owned(db, models.Accessory, acc_id, user.id)
+    acc.favorite = 1 if payload.get("favorite", False) else 0
+    db.commit()
+    db.refresh(acc)
+    return _accessory_out(request, acc)
+
+
+@router.delete("/api/accessories/{acc_id}")
+def delete_accessory(
+    acc_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    acc = _get_owned(db, models.Accessory, acc_id, user.id)
+    db.delete(acc)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.post("/api/accessories/{acc_id}/reanalyze", response_model=AccessoryOut)
+def reanalyze_accessory(
+    acc_id: int,
+    request: Request,
+    payload: dict | None = None,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    from .brands import canonicalize
+    acc = _get_owned(db, models.Accessory, acc_id, user.id)
+    refs = _reference_images(acc)
+    if not refs:
+        raise HTTPException(status_code=400, detail="Keine Bilder zum Analysieren.")
+
+    regenerate = True
+    if payload and "regenerate_image" in payload:
+        regenerate = bool(payload.get("regenerate_image"))
+
+    known = _collection_brands(db, models.Accessory, user.id)
+    try:
+        data = gemini_service.analyze_accessory_image(refs, known_brands=known)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
+
+    data.pop("identified", None)
+    data.pop("confidence", None)
+
+    for field, value in data.items():
+        if field == "brand":
+            if value:
+                acc.brand = canonicalize(value, known + ACCESSORY_BRANDS)
+            continue
+        if field == "details":
+            if isinstance(value, dict) and value:
+                merged = dict(acc.details or {})
+                merged.update(value)
+                acc.details = merged
+            continue
+        if value in (None, "", []):
+            continue
+        setattr(acc, field, value)
+
+    acc.needs_review = 0
+
+    if regenerate:
+        try:
+            result = gemini_service.generate_accessory_shot(
+                refs, item_type=acc.type, brand=acc.brand,
+                name=acc.name, color=acc.color, material=acc.material,
+            )
+            if result:
+                img, mime = result
+                acc.ai_image_data = img
+                acc.ai_image_mime = mime
+                acc.ai_thumbnail_data = models._create_thumbnail(img)
+        except Exception:  # noqa: BLE001
+            pass
+
+    db.commit()
+    db.refresh(acc)
+    return _accessory_out(request, acc)
+
+
+@router.post("/api/accessories/{acc_id}/generate-image", response_model=AccessoryOut)
+def generate_accessory_image(
+    acc_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    acc = _get_owned(db, models.Accessory, acc_id, user.id)
+    refs = _reference_images(acc)
+    if not refs:
+        raise HTTPException(status_code=400, detail="Keine Bilder als Referenz.")
+
+    try:
+        result = gemini_service.generate_accessory_shot(
+            refs, item_type=acc.type, brand=acc.brand,
+            name=acc.name, color=acc.color, material=acc.material,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise_image_error(exc)
+
+    if not result:
+        raise HTTPException(status_code=502, detail="Es konnte kein Bild erzeugt werden.")
+
+    data, mime = result
+    acc.ai_image_data = data
+    acc.ai_image_mime = mime
+    acc.ai_thumbnail_data = models._create_thumbnail(data)
+    db.commit()
+    db.refresh(acc)
+    return _accessory_out(request, acc)
+
+
+@router.delete("/api/accessories/{acc_id}/ai-image", response_model=AccessoryOut)
+def delete_accessory_ai_image(
+    acc_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    acc = _get_owned(db, models.Accessory, acc_id, user.id)
+    acc.ai_image_data = None
+    acc.ai_thumbnail_data = None
+    db.commit()
+    db.refresh(acc)
+    return _accessory_out(request, acc)
+
+
+@router.post("/api/accessories/{acc_id}/images", response_model=AccessoryOut)
+def add_accessory_images(
+    acc_id: int,
+    request: Request,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    acc = _get_owned(db, models.Accessory, acc_id, user.id)
+    raw = payload.get("images") or []
+    if not raw:
+        raise HTTPException(status_code=400, detail="Keine Bilder empfangen.")
+
+    next_pos = max((e.position for e in acc.extra_images or []), default=-1) + 1
+    added = 0
+    for entry in raw:
+        b64 = (entry or {}).get("image_base64", "")
+        if not b64:
+            continue
+        data = decode_b64(b64)
+        acc.extra_images.append(
+            models.AccessoryImage(
+                position=next_pos,
+                image_data=models._compress_image(data),
+                image_mime=entry.get("image_mime") or "image/jpeg",
+                thumbnail_data=models._create_thumbnail(data),
+            )
+        )
+        next_pos += 1
+        added += 1
+
+    if not added:
+        raise HTTPException(status_code=400, detail="Keine gültigen Bilder.")
+
+    db.commit()
+    db.refresh(acc)
+    return _accessory_out(request, acc)
+
+
+# ── Bilder ──
+
+@router.get("/api/accessories/{acc_id}/image")
+def get_accessory_image(acc_id: int, db: Session = Depends(get_db)):
+    acc = db.get(models.Accessory, acc_id)
+    if not acc or not acc.image_data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    return img_response(acc.image_data, acc.image_mime or "image/jpeg")
+
+
+@router.get("/api/accessories/{acc_id}/thumbnail")
+def get_accessory_thumbnail(acc_id: int, db: Session = Depends(get_db)):
+    acc = db.get(models.Accessory, acc_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    data = acc.thumbnail_data or acc.image_data
+    if not data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    mime = "image/jpeg" if acc.thumbnail_data else (acc.image_mime or "image/jpeg")
+    return img_response(data, mime)
+
+
+@router.get("/api/accessories/{acc_id}/ai-image")
+def get_accessory_ai_image(acc_id: int, db: Session = Depends(get_db)):
+    acc = db.get(models.Accessory, acc_id)
+    if not acc or not acc.ai_image_data:
+        raise HTTPException(status_code=404, detail="Kein KI-Bild vorhanden.")
+    return img_response(acc.ai_image_data, acc.ai_image_mime or "image/png")
+
+
+@router.get("/api/accessories/{acc_id}/ai-thumbnail")
+def get_accessory_ai_thumbnail(acc_id: int, db: Session = Depends(get_db)):
+    acc = db.get(models.Accessory, acc_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Kein KI-Bild vorhanden.")
+    data = acc.ai_thumbnail_data or acc.ai_image_data
+    if not data:
+        raise HTTPException(status_code=404, detail="Kein KI-Bild vorhanden.")
+    mime = "image/jpeg" if acc.ai_thumbnail_data else (acc.ai_image_mime or "image/png")
+    return img_response(data, mime)
+
+
+@router.get("/api/accessory-images/{image_id}")
+def get_accessory_extra_image(image_id: int, db: Session = Depends(get_db)):
+    img = db.get(models.AccessoryImage, image_id)
+    if not img or not img.image_data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    return img_response(img.image_data, img.image_mime or "image/jpeg")
+
+
+@router.get("/api/accessory-images/{image_id}/thumbnail")
+def get_accessory_extra_thumbnail(image_id: int, db: Session = Depends(get_db)):
+    img = db.get(models.AccessoryImage, image_id)
+    if not img:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    data = img.thumbnail_data or img.image_data
+    if not data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    mime = "image/jpeg" if img.thumbnail_data else (img.image_mime or "image/jpeg")
+    return img_response(data, mime)
+
+
+@router.delete("/api/accessory-images/{image_id}")
+def delete_accessory_extra_image(
+    image_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    img = db.get(models.AccessoryImage, image_id)
+    if not img:
+        raise HTTPException(status_code=404, detail="Nicht gefunden.")
+    _get_owned(db, models.Accessory, img.accessory_id, user.id)
+    db.delete(img)
+    db.commit()
+    return {"status": "deleted"}
+
+
+# ── Statistik ──
+
+@router.get("/api/analytics/accessories")
+def accessory_stats(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    from collections import Counter
+    rows = user_accessories(db, user.id)
+    if not rows:
+        return {"empty": True, "total": 0}
+
+    type_counter: Counter = Counter()
+    group_counter: Counter = Counter()
+    brand_counter: Counter = Counter()
+    material_counter: Counter = Counter()
+    style_counter: Counter = Counter()
+    occasion_counter: Counter = Counter()
+    needs_review = 0
+
+    for a in rows:
+        if a.get("type"):
+            type_counter[a["type"]] += 1
+            group_counter[accessory_group(a["type"])] += 1
+        if a.get("brand"):
+            brand_counter[a["brand"]] += 1
+        if a.get("material"):
+            material_counter[a["material"]] += 1
+        if a.get("style"):
+            style_counter[a["style"]] += 1
+        for occ in a.get("occasions") or []:
+            occasion_counter[occ] += 1
+        if a.get("needs_review"):
+            needs_review += 1
+
+    def _list(c: Counter) -> list[dict]:
+        total = sum(c.values())
+        return [
+            {"label": k, "count": v, "share": round(v / total * 100) if total else 0}
+            for k, v in c.most_common()
+        ]
+
+    return {
+        "empty": False,
+        "total": len(rows),
+        "groups": _list(group_counter),
+        "types": _list(type_counter)[:15],
+        "brands": _list(brand_counter)[:10],
+        "materials": _list(material_counter)[:10],
+        "styles": _list(style_counter),
+        "occasions": _list(occasion_counter),
+        "needs_review": needs_review,
+    }
+
+
 @router.get("/api/collections/pending-review")
 def pending_review(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    """Wie viele migrierte Eintraege noch auf die KI-Neuanalyse warten.
-
-    Die aus der Garderobe umgezogenen Uhren haben keine technischen Daten,
-    weil sie als Kleidungsstueck erfasst waren. Das Frontend blendet daraus
-    einen Hinweis ein.
-    """
     watches = db.scalar(
         select(func.count(models.Watch.id)).where(
             models.Watch.user_id == user.id,
@@ -1322,4 +1884,15 @@ def pending_review(
             models.Fragrance.needs_review == 1,
         )
     ) or 0
-    return {"watches": watches, "fragrances": fragrances, "total": watches + fragrances}
+    accs = db.scalar(
+        select(func.count(models.Accessory.id)).where(
+            models.Accessory.user_id == user.id,
+            models.Accessory.needs_review == 1,
+        )
+    ) or 0
+    return {
+        "watches": watches,
+        "fragrances": fragrances,
+        "accessories": accs,
+        "total": watches + fragrances + accs,
+    }

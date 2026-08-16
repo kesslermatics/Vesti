@@ -7,6 +7,7 @@ export default function OutfitGenerator({
   meta,
   onItemClick,
   onWatchClick,
+  onAccessoryClick,
   onFragranceClick,
   useAiImages = false,
 }) {
@@ -198,6 +199,7 @@ const WEATHER_OPTIONS = [
                 occasion={occasion}
                 onItemClick={onItemClick}
                 onWatchClick={onWatchClick}
+                onAccessoryClick={onAccessoryClick}
                 onFragranceClick={onFragranceClick}
                 useAiImages={useAiImages}
               />
@@ -273,6 +275,7 @@ function OutfitCard({
   occasion,
   onItemClick,
   onWatchClick,
+  onAccessoryClick,
   onFragranceClick,
   useAiImages,
 }) {
@@ -348,14 +351,21 @@ function OutfitCard({
         ))}
       </div>
 
-      {/* Uhr und Duft zum Look */}
-      {(outfit.watch || outfit.fragrance) && (
+      {/* Uhr, Accessoire und Duft zum Look */}
+      {(outfit.watch || outfit.accessory || outfit.fragrance) && (
         <div className="space-y-2">
           <ExtraRow
             label="Passende Uhr"
             icon="⌚"
             entry={outfit.watch}
             onClick={onWatchClick}
+            useAiImages={useAiImages}
+          />
+          <ExtraRow
+            label="Passendes Accessoire"
+            icon="💎"
+            entry={outfit.accessory}
+            onClick={onAccessoryClick}
             useAiImages={useAiImages}
           />
           <ExtraRow
