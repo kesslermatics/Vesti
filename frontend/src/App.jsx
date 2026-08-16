@@ -12,6 +12,7 @@ import Shopping from "./components/Shopping";
 import Analytics from "./components/Analytics";
 import OutfitGenerator from "./components/OutfitGenerator";
 import Chat from "./components/Chat";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Vier Haupteinträge in der Bottom-Bar. Die Sammlungen sind bewusst KEINE
 // eigenen Tabs, sondern liegen als Segmented Control innerhalb von "Sammlung" –
@@ -205,45 +206,41 @@ function ItemCard({ item, onSelect, viewMode, useAiImages }) {
   );
 }
 
-// ── Segmented Control für die drei Sammlungen ──
+// Horizontal scrollbarer Segmented Control – auf kleinen Screens kein Wrap
 function KindSwitcher({ kind, setKind, counts }) {
   return (
-    <div className="relative flex bg-sand-100 rounded-2xl p-1 mb-6">
-      {KINDS.map((k) => {
-        const active = kind === k.id;
-        return (
-          <button
-            key={k.id}
-            onClick={() => setKind(k.id)}
-            className="relative flex-1 py-2.5 rounded-xl text-sm font-medium transition z-10"
-          >
-            {active && (
-              <motion.div
-                layoutId="kind-pill"
-                className="absolute inset-0 bg-white rounded-xl shadow-sm"
-                transition={{ type: "spring", stiffness: 400, damping: 32 }}
-              />
-            )}
-            <span
-              className={`relative flex items-center justify-center gap-1.5 ${
-                active ? "text-ink-900" : "text-ink-700/50"
+    <div className="relative mb-6 -mx-5 px-5">
+      <div
+        className="flex gap-2 overflow-x-auto pb-1"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        {KINDS.map((k) => {
+          const active = kind === k.id;
+          return (
+            <button
+              key={k.id}
+              onClick={() => setKind(k.id)}
+              className={`relative flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition ${
+                active
+                  ? "bg-clay-500 text-white shadow-sm"
+                  : "bg-sand-100 text-ink-700/70 hover:bg-sand-200"
               }`}
             >
               <span className={active ? "" : "grayscale opacity-70"}>{k.icon}</span>
-              <span className="truncate">{k.label}</span>
+              <span>{k.label}</span>
               {counts[k.id] > 0 && (
                 <span
                   className={`text-[10px] tabular-nums ${
-                    active ? "text-ink-700/50" : "text-ink-700/30"
+                    active ? "text-white/70" : "text-ink-700/40"
                   }`}
                 >
                   {counts[k.id]}
                 </span>
               )}
-            </span>
-          </button>
-        );
-      })}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -586,6 +583,7 @@ export default function App() {
           </div>
         )}
 
+        <ErrorBoundary resetKey={tab}>
         <AnimatePresence mode="wait">
           {/* ─────────── Sammlung ─────────── */}
           {tab === TAB.COLLECTION && (
@@ -898,6 +896,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+        </ErrorBoundary>
       </main>
 
       {/* Kontextsensitiver Add-Button */}
