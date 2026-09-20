@@ -2,30 +2,55 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api, auth } from "./api";
 import AddItem from "./components/AddItem";
+import AddCollectionItem from "./components/AddCollectionItem";
 import ItemDetail from "./components/ItemDetail";
+import { AccessoryDetail, FragranceDetail, WatchDetail } from "./components/CollectionDetail";
+import CollectionView from "./components/CollectionView";
 import Auth from "./components/Auth";
 import Profile from "./components/Profile";
 import Shopping from "./components/Shopping";
 import Analytics from "./components/Analytics";
-import Toast from "./components/Toast";
 import OutfitGenerator from "./components/OutfitGenerator";
 import Chat from "./components/Chat";
+import ErrorBoundary from "./components/ErrorBoundary";
 
+// Vier Haupteinträge in der Bottom-Bar. Die Sammlungen sind bewusst KEINE
+// eigenen Tabs, sondern liegen als Segmented Control innerhalb von "Sammlung" –
+// sieben Tabs wären auf einem Handy nicht mehr bedienbar.
 const TAB = {
-  WARDROBE: "wardrobe",
+  COLLECTION: "collection",
   ANALYTICS: "analytics",
   SHOPPING: "shopping",
   CHAT: "chat",
-  PROFILE: "profile",
 };
 
 const TABS = [
-  { id: TAB.WARDROBE, label: "Garderobe", icon: "🧥" },
+  { id: TAB.COLLECTION, label: "Sammlung", icon: "🧥" },
   { id: TAB.ANALYTICS, label: "Analyse", icon: "📊" },
   { id: TAB.SHOPPING, label: "Shopping", icon: "🛍️" },
   { id: TAB.CHAT, label: "Chat", icon: "💬" },
-  { id: TAB.PROFILE, label: "Profil", icon: "👤" },
 ];
+
+const KIND = {
+  CLOTHING: "clothing",
+  WATCHES: "watches",
+  ACCESSORIES: "accessories",
+  FRAGRANCES: "fragrances",
+};
+
+const KINDS = [
+  { id: KIND.CLOTHING,   label: "Kleidung",    icon: "👕" },
+  { id: KIND.WATCHES,    label: "Uhren",        icon: "⌚" },
+  { id: KIND.ACCESSORIES, label: "Accessoires", icon: "💎" },
+  { id: KIND.FRAGRANCES, label: "Düfte",        icon: "🧴" },
+];
+
+const ADD_LABEL = {
+  [KIND.CLOTHING]:   "Teil hinzufügen",
+  [KIND.WATCHES]:    "Uhr hinzufügen",
+  [KIND.ACCESSORIES]: "Accessoire hinzufügen",
+  [KIND.FRAGRANCES]: "Duft hinzufügen",
+};
 
 const GREETINGS = [
   "Dein Stil auf den Punkt gebracht.",
@@ -52,7 +77,7 @@ const GREETINGS = [
   "Stil ist, wenn alles zusammenpasst. 🕶️",
   "Dein Tag, dein Outfit, deine Wahl.",
   "Entdecke heute neue Kombinationen.",
-  "Ein Griff in den Kleiderschrank, unzählige Möglichkeiten.",
+  "Vom Hemd bis zum Duft – heute stimmt alles.",
   "Bereit für das, was heute kommt. 💼",
   "Finde genau das, was heute zu dir passt.",
   "Qualität und Stil, die man sieht.",
@@ -60,14 +85,14 @@ const GREETINGS = [
   "Kleidung ist Ausdruck. Was sagst du heute? 🖋️",
   "Stilbewusst durch den ganzen Tag.",
   "Heute überlassen wir nichts dem Zufall.",
-  "Ein durchdachtes Outfit für einen erfolgreichen Tag.",
+  "Die richtige Uhr macht den Unterschied. ⌚",
   "Weniger suchen, besser kleiden. 🧥",
   "Finde den Look, der dich heute begleitet.",
   "Eleganz beginnt bei der Auswahl.",
   "Mach den heutigen Tag zu deinem.",
   "Perfekt abgestimmt in den Tag starten.",
   "Dein Stil ist deine beste Visitenkarte.",
-  "Zeit für einen Look, der genau zu dir passt."
+  "Zeit für einen Look, der genau zu dir passt.",
 ];
 
 function getRandomGreeting() {
@@ -127,9 +152,7 @@ function ItemCard({ item, onSelect, viewMode, useAiImages }) {
           {item.name || item.category}
         </span>
         {item.color && (
-          <span className="block text-xs text-ink-700/50 truncate">
-            {item.color}
-          </span>
+          <span className="block text-xs text-ink-700/50 truncate">{item.color}</span>
         )}
       </motion.button>
     );
@@ -146,7 +169,6 @@ function ItemCard({ item, onSelect, viewMode, useAiImages }) {
       onClick={() => onSelect(item)}
       className="w-full group text-left bg-white rounded-xl p-3 shadow-soft hover:shadow-md transition flex items-center gap-3"
     >
-      {/* Thumbnail */}
       <div className="relative w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden bg-sand-50">
         <img
           src={thumb}
@@ -159,7 +181,7 @@ function ItemCard({ item, onSelect, viewMode, useAiImages }) {
           </div>
         )}
       </div>
-      
+
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
           <span className="font-medium text-ink-900 truncate">
@@ -179,78 +201,196 @@ function ItemCard({ item, onSelect, viewMode, useAiImages }) {
           {item.material && <span>{item.material}</span>}
         </div>
       </div>
-      <span className="text-ink-700/30 group-hover:text-ink-700/60 transition">
-        →
-      </span>
+      <span className="text-ink-700/30 group-hover:text-ink-700/60 transition">→</span>
     </motion.button>
+  );
+}
+
+// Horizontal scrollbarer Segmented Control – auf kleinen Screens kein Wrap
+function KindSwitcher({ kind, setKind, counts }) {
+  return (
+    <div className="relative mb-6 -mx-5 px-5">
+      <div
+        className="flex gap-2 overflow-x-auto pb-1"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        {KINDS.map((k) => {
+          const active = kind === k.id;
+          return (
+            <button
+              key={k.id}
+              onClick={() => setKind(k.id)}
+              className={`relative flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition ${
+                active
+                  ? "bg-clay-500 text-white shadow-sm"
+                  : "bg-sand-100 text-ink-700/70 hover:bg-sand-200"
+              }`}
+            >
+              <span className={active ? "" : "grayscale opacity-70"}>{k.icon}</span>
+              <span>{k.label}</span>
+              {counts[k.id] > 0 && (
+                <span
+                  className={`text-[10px] tabular-nums ${
+                    active ? "text-white/70" : "text-ink-700/40"
+                  }`}
+                >
+                  {counts[k.id]}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Konto-Sheet: alles Sekundäre wandert aus dem Header hierher ──
+function AccountSheet({ open, user, onClose, onOpenProfile, onLogout }) {
+  const initials = (user.name || user.email || "?")
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join("");
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div
+            className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
+            onClick={onClose}
+          />
+          <motion.div
+            className="relative w-full sm:max-w-sm bg-sand-50 rounded-t-3xl sm:rounded-3xl shadow-soft p-5"
+            style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1.25rem)" }}
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+          >
+            <div className="flex items-center gap-3 pb-4 border-b border-sand-100">
+              <div className="w-12 h-12 rounded-full bg-clay-500 text-white flex items-center justify-center font-semibold">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-ink-900 truncate">
+                  {user.name || "Dein Konto"}
+                </p>
+                <p className="text-xs text-ink-700/60 truncate">{user.email}</p>
+              </div>
+            </div>
+
+            <div className="pt-3 space-y-1">
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenProfile();
+                }}
+                className="w-full text-left px-3 py-3 rounded-xl hover:bg-sand-100 transition flex items-center gap-3"
+              >
+                <span className="text-lg">👤</span>
+                <div>
+                  <p className="text-sm font-medium text-ink-900">Profil & Maße</p>
+                  <p className="text-xs text-ink-700/50">
+                    Körpermaße, Größen und Stil-Notizen
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={onLogout}
+                className="w-full text-left px-3 py-3 rounded-xl hover:bg-clay-500/5 transition flex items-center gap-3"
+              >
+                <span className="text-lg">🚪</span>
+                <p className="text-sm font-medium text-clay-600">Abmelden</p>
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [booting, setBooting] = useState(true);
-  const [tab, setTab] = useState(TAB.WARDROBE);
+  const [tab, setTab] = useState(TAB.COLLECTION);
+  const [kind, setKind] = useState(() => {
+    const saved = localStorage.getItem("vesti-collection-kind");
+    return Object.values(KIND).includes(saved) ? saved : KIND.CLOTHING;
+  });
   const [viewMode, setViewMode] = useState(() => {
-    // Load saved view mode from localStorage
     const saved = localStorage.getItem("vesti-view-mode");
     return saved === VIEW_MODE.LIST ? VIEW_MODE.LIST : VIEW_MODE.GRID;
   });
-  const [useAiImages, setUseAiImages] = useState(() => {
-    // KI-Bilder oder eigene Fotos anzeigen
-    return localStorage.getItem("vesti-image-source") === "ai";
-  });
+  const [useAiImages, setUseAiImages] = useState(
+    () => localStorage.getItem("vesti-image-source") === "ai"
+  );
+
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState([]);
+  const [watches, setWatches] = useState([]);
+  const [accessories, setAccessories] = useState([]);
+  const [fragrances, setFragrances] = useState([]);
+  const [pending, setPending] = useState({ watches: 0, fragrances: 0, total: 0 });
   const [loading, setLoading] = useState(true);
-  const [addOpen, setAddOpen] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [error, setError] = useState("");
 
-  // Android/iOS Zurück-Button: Modal schließen statt App verlassen
+  const [addOpen, setAddOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedWatch, setSelectedWatch] = useState(null);
+  const [selectedAccessory, setSelectedAccessory] = useState(null);
+  const [selectedFragrance, setSelectedFragrance] = useState(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [greeting, setGreeting] = useState(getRandomGreeting());
+
+  const anyOverlay =
+    selectedItem || selectedWatch || selectedAccessory || selectedFragrance || addOpen || profileOpen;
+
+  // Android/iOS Zurück-Button: Overlay schließen statt App verlassen
   useEffect(() => {
     function onPopState() {
-      // Wenn ein Overlay offen ist, schließen — aber nicht aus der App raus
-      if (selected) {
-        setSelected(null);
-        return;
-      }
-      if (addOpen) {
-        setAddOpen(false);
-        return;
-      }
-      // Nichts offen → neuen State pushen damit nächster Zurück-Druck auch abgefangen wird
+      if (selectedItem) return setSelectedItem(null);
+      if (selectedWatch) return setSelectedWatch(null);
+      if (selectedAccessory) return setSelectedAccessory(null);
+      if (selectedFragrance) return setSelectedFragrance(null);
+      if (profileOpen) return setProfileOpen(false);
+      if (addOpen) return setAddOpen(false);
       history.pushState({ overlay: false }, "");
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [selected, addOpen]);
+  }, [selectedItem, selectedWatch, selectedFragrance, addOpen, profileOpen]);
 
-  // History-Entry pushen wenn ein Overlay öffnet, damit Zurück-Button es schließt
   useEffect(() => {
-    if (selected || addOpen) {
-      history.pushState({ overlay: true }, "");
-    }
-  }, [selected, addOpen]);
-  const [greeting, setGreeting] = useState(getRandomGreeting());
+    if (anyOverlay) history.pushState({ overlay: true }, "");
+  }, [anyOverlay]);
 
-  // Neue Begrüßung beim Tab-Wechsel zur Garderobe
   useEffect(() => {
-    if (tab === TAB.WARDROBE) {
-      setGreeting(getRandomGreeting());
-    }
+    if (tab === TAB.COLLECTION) setGreeting(getRandomGreeting());
   }, [tab]);
 
-  // Save view mode to localStorage when it changes
   useEffect(() => {
     localStorage.setItem("vesti-view-mode", viewMode);
   }, [viewMode]);
 
-  // Save image source preference
   useEffect(() => {
     localStorage.setItem("vesti-image-source", useAiImages ? "ai" : "own");
   }, [useAiImages]);
 
-  // Beim Start: Token pruefen und Nutzer laden
+  useEffect(() => {
+    localStorage.setItem("vesti-collection-kind", kind);
+  }, [kind]);
+
+  // Beim Start: Token prüfen und Nutzer laden
   useEffect(() => {
     (async () => {
       if (!auth.token) {
@@ -258,8 +398,7 @@ export default function App() {
         return;
       }
       try {
-        const me = await api.me();
-        setUser(me);
+        setUser(await api.me());
       } catch {
         auth.clear();
       } finally {
@@ -268,22 +407,31 @@ export default function App() {
     })();
   }, []);
 
-  // Bei 401 irgendwo -> ausloggen
   useEffect(() => {
     const handler = () => setUser(null);
     window.addEventListener("vesti-unauthorized", handler);
     return () => window.removeEventListener("vesti-unauthorized", handler);
   }, []);
 
-  // Daten laden sobald eingeloggt
+  // Alle drei Sammlungen parallel laden
   useEffect(() => {
     if (!user) return;
     setLoading(true);
     (async () => {
       try {
-        const [m, list] = await Promise.all([api.getMeta(), api.listItems()]);
+        const [m, list, watchList, fragranceList, accessoryList] = await Promise.all([
+          api.getMeta(),
+          api.listItems(),
+          api.listWatches(),
+          api.listFragrances(),
+          api.listAccessories(),
+        ]);
         setMeta(m);
         setItems(list);
+        setWatches(watchList);
+        setFragrances(fragranceList);
+        setAccessories(accessoryList);
+        api.getPendingReview().then(setPending).catch(() => {});
       } catch (err) {
         setError(err.message || "Verbindung zum Server fehlgeschlagen.");
       } finally {
@@ -296,73 +444,74 @@ export default function App() {
     auth.clear();
     setUser(null);
     setItems([]);
-    setSelected(null);
-    setTab(TAB.WARDROBE);
+    setWatches([]);
+    setAccessories([]);
+    setFragrances([]);
+    setSelectedItem(null);
+    setSelectedWatch(null);
+    setSelectedAccessory(null);
+    setSelectedFragrance(null);
+    setAccountOpen(false);
+    setProfileOpen(false);
+    setTab(TAB.COLLECTION);
   }, []);
 
-  // Nach Kategorie-Gruppen gruppieren (intelligent sortiert)
-  // Sortierung: neu → alt (created_at DESC)
+  // Kleidung nach Kategorie-Gruppen, Favoriten zuerst, neu vor alt
   const grouped = useMemo(() => {
     if (!meta) return { favorites: [], groups: [] };
-    
-    // Sortiere Items: neueste zuerst
-    const sortedItems = [...items].sort((a, b) => 
-      new Date(b.created_at) - new Date(a.created_at)
+
+    const sorted = [...items].sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
     );
-    
-    // Trenne Favoriten
-    const favorites = sortedItems.filter(it => it.favorite);
-    const nonFavorites = sortedItems.filter(it => !it.favorite);
-    
-    // Gruppiere nach Meta-Gruppen (z.B. "Oberteile", "Schuhe", etc.)
+    const favorites = sorted.filter((it) => it.favorite);
+    const nonFavorites = sorted.filter((it) => !it.favorite);
+
     const groupMap = new Map();
-    
     for (const item of nonFavorites) {
-      // Finde die Gruppe für diese Kategorie
-      const metaGroup = meta.category_groups.find(g => 
+      const metaGroup = meta.category_groups.find((g) =>
         g.items.includes(item.category)
       );
       const groupName = metaGroup ? metaGroup.group : "Sonstiges";
-      
-      if (!groupMap.has(groupName)) {
-        groupMap.set(groupName, []);
-      }
+      if (!groupMap.has(groupName)) groupMap.set(groupName, []);
       groupMap.get(groupName).push(item);
     }
-    
-    // Konvertiere zu Array in der Reihenfolge der Meta-Gruppen
+
     const groups = meta.category_groups
-      .filter(g => groupMap.has(g.group))
-      .map(g => ({
-        group: g.group,
-        items: groupMap.get(g.group)
-      }));
-    
+      .filter((g) => groupMap.has(g.group))
+      .map((g) => ({ group: g.group, items: groupMap.get(g.group) }));
+
+    // Kategorien die nicht mehr im Vokabular stehen (z.B. nach einer Umbenennung)
+    for (const [name, list] of groupMap) {
+      if (!groups.some((g) => g.group === name)) {
+        groups.push({ group: name, items: list });
+      }
+    }
+
     return { favorites, groups };
   }, [items, meta]);
 
-  // Gesamtzahl inkl. Stückzahlen
-  const totalPieces = useMemo(
-    () => items.reduce((sum, i) => sum + (i.quantity || 1), 0),
-    [items]
-  );
+  const counts = {
+    [KIND.CLOTHING]: items.reduce((sum, i) => sum + (i.quantity || 1), 0),
+    [KIND.WATCHES]: watches.length,
+    [KIND.ACCESSORIES]: accessories.length,
+    [KIND.FRAGRANCES]: fragrances.length,
+  };
 
-  function handleCreated(item) {
-    setItems((prev) => [item, ...prev]);
+  // ── Handler pro Sammlung ──
+  function upsert(setter) {
+    return (entry) =>
+      setter((prev) => {
+        const exists = prev.some((e) => e.id === entry.id);
+        return exists ? prev.map((e) => (e.id === entry.id ? entry : e)) : [entry, ...prev];
+      });
   }
 
-  function handleDeleted(id) {
-    setItems((prev) => prev.filter((i) => i.id !== id));
-    setSelected(null);
-  }
+  const addWatch = upsert(setWatches);
+  const addAccessory = upsert(setAccessories);
+  const addFragrance = upsert(setFragrances);
 
-  function handleUpdated(updated) {
-    setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
-    setSelected(updated);
-  }
-
-  function openItem(item) {
-    setSelected(item);
+  function refreshPending() {
+    api.getPendingReview().then(setPending).catch(() => {});
   }
 
   // Boot-Splash
@@ -378,31 +527,39 @@ export default function App() {
     );
   }
 
-  // Nicht eingeloggt -> Auth-Screen
-  if (!user) {
-    return <Auth onAuth={setUser} />;
-  }
+  if (!user) return <Auth onAuth={setUser} />;
 
-  const activeTab = TABS.find((t) => t.id === tab);
+  const initials = (user.name || user.email || "?")
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join("");
+
+  const addKind =
+    kind === KIND.WATCHES ? "watch"
+    : kind === KIND.ACCESSORIES ? "accessory"
+    : kind === KIND.FRAGRANCES ? "fragrance"
+    : "clothing";
 
   return (
     <div className="min-h-full pb-32">
       {/* Header */}
-      <header 
+      <header
         className="sticky z-30 bg-sand-50/80 backdrop-blur-md border-b border-sand-100"
         style={{ top: "env(safe-area-inset-top, 0)" }}
       >
-        <div 
-          className="max-w-3xl mx-auto px-5 flex items-center justify-between"
+        <div
+          className="max-w-3xl mx-auto px-5 flex items-center justify-between gap-3"
           style={{
             paddingTop: "max(env(safe-area-inset-top), 1rem)",
-            paddingBottom: "1rem"
+            paddingBottom: "1rem",
           }}
         >
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight text-ink-900">Vesti</h1>
-            <p className="text-xs text-ink-700/60">
-              {tab === TAB.WARDROBE
+            <p className="text-xs text-ink-700/60 truncate">
+              {tab === TAB.COLLECTION
                 ? greeting
                 : user.name
                 ? `Hallo, ${user.name}`
@@ -410,10 +567,11 @@ export default function App() {
             </p>
           </div>
           <button
-            onClick={logout}
-            className="text-xs font-medium text-ink-700/60 hover:text-clay-600 border border-sand-200 rounded-full px-3 py-1.5 transition"
+            onClick={() => setAccountOpen(true)}
+            className="w-10 h-10 flex-shrink-0 rounded-full bg-clay-500 text-white text-sm font-semibold flex items-center justify-center hover:bg-clay-600 transition"
+            aria-label="Konto und Profil"
           >
-            Abmelden
+            {initials}
           </button>
         </div>
       </header>
@@ -425,180 +583,274 @@ export default function App() {
           </div>
         )}
 
+        <ErrorBoundary resetKey={tab}>
         <AnimatePresence mode="wait">
-          {/* ─────────── Garderobe ─────────── */}
-          {tab === TAB.WARDROBE && (
+          {/* ─────────── Sammlung ─────────── */}
+          {tab === TAB.COLLECTION && (
             <motion.div
-              key="wardrobe"
+              key="collection"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
             >
-              {loading && (
-                <div className="flex justify-center py-20 text-ink-700/50">
-                  <motion.span
-                    className="inline-block w-6 h-6 border-2 border-clay-500 border-t-transparent rounded-full"
-                    animate={{ rotate: 360 }}
-                    transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-                  />
+              <KindSwitcher kind={kind} setKind={setKind} counts={counts} />
+
+              {/* Hinweis auf migrierte Einträge ohne technische Daten */}
+              {pending.total > 0 && kind === KIND.WATCHES && pending.watches > 0 && (
+                <div className="rounded-2xl bg-amber-400/10 px-4 py-3 mb-6">
+                  <p className="text-sm text-ink-800">
+                    {pending.watches === 1
+                      ? "Eine Uhr wurde aus der Kleidungs-Garderobe übernommen und wartet noch auf die KI-Erfassung."
+                      : `${pending.watches} Uhren wurden aus der Kleidungs-Garderobe übernommen und warten noch auf die KI-Erfassung.`}{" "}
+                    Öffne sie und tippe auf „Jetzt per KI erfassen".
+                  </p>
+                </div>
+              )}
+              {pending.total > 0 && kind === KIND.ACCESSORIES && pending.accessories > 0 && (
+                <div className="rounded-2xl bg-amber-400/10 px-4 py-3 mb-6">
+                  <p className="text-sm text-ink-800">
+                    {pending.accessories === 1
+                      ? "Ein Accessoire wurde aus der Kleidungs-Garderobe übernommen und wartet noch auf die KI-Erfassung."
+                      : `${pending.accessories} Accessoires wurden aus der Kleidungs-Garderobe übernommen und warten noch auf die KI-Erfassung.`}{" "}
+                    Öffne es und tippe auf „Jetzt per KI erfassen".
+                  </p>
                 </div>
               )}
 
-              {!loading && items.length === 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-center py-20"
-                >
-                  <div className="text-5xl mb-4">🧥</div>
-                  <h2 className="text-lg font-semibold text-ink-900">
-                    Deine Garderobe ist noch leer
-                  </h2>
-                  <p className="text-sm text-ink-700/60 mt-1 max-w-xs mx-auto">
-                    Füge dein erstes Kleidungsstück hinzu – ein Foto genügt, den Rest erledigt
-                    die KI.
-                  </p>
-                </motion.div>
-              )}
-
-              {!loading && items.length > 0 && (
+              {/* ── Kleidung ── */}
+              {kind === KIND.CLOTHING && (
                 <>
-                  {/* Outfit-Generator */}
-                  <OutfitGenerator 
-                    meta={meta} 
-                    onItemClick={(id) => {
-                      const item = items.find(it => it.id === id);
-                      if (item) openItem(item);
-                    }} 
-                  />
-
-                  {/* Toggles: Bildquelle + Ansichtsmodus */}
-                  <div className="flex items-center justify-between gap-2 mb-4">
-                    {/* Bildquelle: eigene Fotos vs. KI-Produktfotos */}
-                    <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
-                      <button
-                        onClick={() => setUseAiImages(false)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                          !useAiImages
-                            ? "bg-white text-ink-900 shadow-sm"
-                            : "text-ink-700/60 hover:text-ink-900"
-                        }`}
-                      >
-                        <span className="mr-1">📷</span> Eigene
-                      </button>
-                      <button
-                        onClick={() => setUseAiImages(true)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                          useAiImages
-                            ? "bg-white text-ink-900 shadow-sm"
-                            : "text-ink-700/60 hover:text-ink-900"
-                        }`}
-                      >
-                        <span className="mr-1">✨</span> Inszeniert
-                      </button>
+                  {loading && (
+                    <div className="flex justify-center py-20 text-ink-700/50">
+                      <motion.span
+                        className="inline-block w-6 h-6 border-2 border-clay-500 border-t-transparent rounded-full"
+                        animate={{ rotate: 360 }}
+                        transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                      />
                     </div>
+                  )}
 
-                    {/* Ansichtsmodus */}
-                    <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
-                      <button
-                        onClick={() => setViewMode(VIEW_MODE.GRID)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                          viewMode === VIEW_MODE.GRID
-                            ? "bg-white text-ink-900 shadow-sm"
-                            : "text-ink-700/60 hover:text-ink-900"
-                        }`}
-                      >
-                        <span className="mr-1">▦</span> Grid
-                      </button>
-                      <button
-                        onClick={() => setViewMode(VIEW_MODE.LIST)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                          viewMode === VIEW_MODE.LIST
-                            ? "bg-white text-ink-900 shadow-sm"
-                            : "text-ink-700/60 hover:text-ink-900"
-                        }`}
-                      >
-                        <span className="mr-1">☰</span> Liste
-                      </button>
-                    </div>
-                  </div>
+                  {!loading && items.length === 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-center py-20"
+                    >
+                      <div className="text-5xl mb-4">🧥</div>
+                      <h2 className="text-lg font-semibold text-ink-900">
+                        Deine Garderobe ist noch leer
+                      </h2>
+                      <p className="text-sm text-ink-700/60 mt-1 max-w-xs mx-auto">
+                        Füge dein erstes Kleidungsstück hinzu – ein Foto genügt, den Rest
+                        erledigt die KI.
+                      </p>
+                    </motion.div>
+                  )}
 
-                  <div className="space-y-8">
-                    {/* Favoriten-Sektion */}
-                    {grouped.favorites && grouped.favorites.length > 0 && (
-                      <section>
-                        <div className="flex items-center gap-3 mb-3">
-                          <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
-                            ⭐ Favoriten
-                          </h2>
-                          <span className="text-xs text-ink-700/40">{grouped.favorites.length}</span>
-                          <div className="flex-1 h-px bg-sand-100" />
+                  {!loading && items.length > 0 && (
+                    <>
+                      <OutfitGenerator
+                        meta={meta}
+                        useAiImages={useAiImages}
+                        onItemClick={(id) => {
+                          const item = items.find((it) => it.id === id);
+                          if (item) setSelectedItem(item);
+                        }}
+                        onWatchClick={(id) => {
+                          const w = watches.find((it) => it.id === id);
+                          if (w) setSelectedWatch(w);
+                        }}
+                        onAccessoryClick={(id) => {
+                          const a = accessories.find((it) => it.id === id);
+                          if (a) setSelectedAccessory(a);
+                        }}
+                        onFragranceClick={(id) => {
+                          const f = fragrances.find((it) => it.id === id);
+                          if (f) setSelectedFragrance(f);
+                        }}
+                      />
+
+                      <div className="flex items-center justify-between gap-2 mb-4">
+                        <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
+                          <button
+                            onClick={() => setUseAiImages(false)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                              !useAiImages
+                                ? "bg-white text-ink-900 shadow-sm"
+                                : "text-ink-700/60 hover:text-ink-900"
+                            }`}
+                          >
+                            <span className="mr-1">📷</span> Eigene
+                          </button>
+                          <button
+                            onClick={() => setUseAiImages(true)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                              useAiImages
+                                ? "bg-white text-ink-900 shadow-sm"
+                                : "text-ink-700/60 hover:text-ink-900"
+                            }`}
+                          >
+                            <span className="mr-1">✨</span> Inszeniert
+                          </button>
                         </div>
 
-                        {viewMode === VIEW_MODE.GRID && (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            <AnimatePresence>
-                              {grouped.favorites.map((item) => (
-                                <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
-                              ))}
-                            </AnimatePresence>
-                          </div>
-                        )}
+                        <div className="inline-flex items-center gap-1 bg-sand-100 rounded-xl p-1">
+                          <button
+                            onClick={() => setViewMode(VIEW_MODE.GRID)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                              viewMode === VIEW_MODE.GRID
+                                ? "bg-white text-ink-900 shadow-sm"
+                                : "text-ink-700/60 hover:text-ink-900"
+                            }`}
+                          >
+                            <span className="mr-1">▦</span> Grid
+                          </button>
+                          <button
+                            onClick={() => setViewMode(VIEW_MODE.LIST)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                              viewMode === VIEW_MODE.LIST
+                                ? "bg-white text-ink-900 shadow-sm"
+                                : "text-ink-700/60 hover:text-ink-900"
+                            }`}
+                          >
+                            <span className="mr-1">☰</span> Liste
+                          </button>
+                        </div>
+                      </div>
 
-                        {viewMode === VIEW_MODE.LIST && (
-                          <div className="space-y-2">
-                            <AnimatePresence>
-                              {grouped.favorites.map((item) => (
-                                <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
-                              ))}
-                            </AnimatePresence>
-                          </div>
-                        )}
-                      </section>
-                    )}
-
-                    {/* Kategorien-Gruppen */}
-                    {grouped.groups.map((group) => {
-                      const groupTotal = group.items.reduce(
-                        (s, i) => s + (i.quantity || 1),
-                        0
-                      );
-                      return (
-                        <section key={group.group}>
-                          <div className="flex items-center gap-3 mb-3">
-                            <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
-                              {group.group}
-                            </h2>
-                            <span className="text-xs text-ink-700/40">{groupTotal}</span>
-                            <div className="flex-1 h-px bg-sand-100" />
-                          </div>
-
-                          {/* Grid-Ansicht */}
-                          {viewMode === VIEW_MODE.GRID && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="space-y-8">
+                        {grouped.favorites.length > 0 && (
+                          <section>
+                            <div className="flex items-center gap-3 mb-3">
+                              <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
+                                ⭐ Favoriten
+                              </h2>
+                              <span className="text-xs text-ink-700/40">
+                                {grouped.favorites.length}
+                              </span>
+                              <div className="flex-1 h-px bg-sand-100" />
+                            </div>
+                            <div
+                              className={
+                                viewMode === VIEW_MODE.GRID
+                                  ? "grid grid-cols-2 sm:grid-cols-3 gap-3"
+                                  : "space-y-2"
+                              }
+                            >
                               <AnimatePresence>
-                                {group.items.map((item) => (
-                                  <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
+                                {grouped.favorites.map((item) => (
+                                  <ItemCard
+                                    key={item.id}
+                                    item={item}
+                                    onSelect={setSelectedItem}
+                                    viewMode={viewMode}
+                                    useAiImages={useAiImages}
+                                  />
                                 ))}
                               </AnimatePresence>
                             </div>
-                          )}
+                          </section>
+                        )}
 
-                          {/* Listen-Ansicht */}
-                          {viewMode === VIEW_MODE.LIST && (
-                            <div className="space-y-2">
-                              <AnimatePresence>
-                                {group.items.map((item) => (
-                                  <ItemCard key={item.id} item={item} onSelect={openItem} viewMode={viewMode} useAiImages={useAiImages} />
-                                ))}
-                              </AnimatePresence>
-                            </div>
-                          )}
-                        </section>
-                      );
-                    })}
-                  </div>
+                        {grouped.groups.map((group) => {
+                          const groupTotal = group.items.reduce(
+                            (s, i) => s + (i.quantity || 1),
+                            0
+                          );
+                          return (
+                            <section key={group.group}>
+                              <div className="flex items-center gap-3 mb-3">
+                                <h2 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">
+                                  {group.group}
+                                </h2>
+                                <span className="text-xs text-ink-700/40">
+                                  {groupTotal}
+                                </span>
+                                <div className="flex-1 h-px bg-sand-100" />
+                              </div>
+                              <div
+                                className={
+                                  viewMode === VIEW_MODE.GRID
+                                    ? "grid grid-cols-2 sm:grid-cols-3 gap-3"
+                                    : "space-y-2"
+                                }
+                              >
+                                <AnimatePresence>
+                                  {group.items.map((item) => (
+                                    <ItemCard
+                                      key={item.id}
+                                      item={item}
+                                      onSelect={setSelectedItem}
+                                      viewMode={viewMode}
+                                      useAiImages={useAiImages}
+                                    />
+                                  ))}
+                                </AnimatePresence>
+                              </div>
+                            </section>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </>
+              )}
+
+              {/* ── Uhren ── */}
+              {kind === KIND.WATCHES && (
+                <CollectionView
+                  kind="watch"
+                  entries={watches}
+                  meta={meta}
+                  loading={loading}
+                  viewMode={viewMode}
+                  setViewMode={setViewMode}
+                  useAiImages={useAiImages}
+                  setUseAiImages={setUseAiImages}
+                  onSelect={setSelectedWatch}
+                  onSelectId={(id) => {
+                    const w = watches.find((it) => it.id === id);
+                    if (w) setSelectedWatch(w);
+                  }}
+                />
+              )}
+
+              {/* ── Accessoires ── */}
+              {kind === KIND.ACCESSORIES && (
+                <CollectionView
+                  kind="accessory"
+                  entries={accessories}
+                  meta={meta}
+                  loading={loading}
+                  viewMode={viewMode}
+                  setViewMode={setViewMode}
+                  useAiImages={useAiImages}
+                  setUseAiImages={setUseAiImages}
+                  onSelect={setSelectedAccessory}
+                  onSelectId={(id) => {
+                    const a = accessories.find((it) => it.id === id);
+                    if (a) setSelectedAccessory(a);
+                  }}
+                />
+              )}
+
+              {/* ── Düfte ── */}
+              {kind === KIND.FRAGRANCES && (
+                <CollectionView
+                  kind="fragrance"
+                  entries={fragrances}
+                  meta={meta}
+                  loading={loading}
+                  viewMode={viewMode}
+                  setViewMode={setViewMode}
+                  useAiImages={useAiImages}
+                  setUseAiImages={setUseAiImages}
+                  onSelect={setSelectedFragrance}
+                  onSelectId={(id) => {
+                    const f = fragrances.find((it) => it.id === id);
+                    if (f) setSelectedFragrance(f);
+                  }}
+                />
               )}
             </motion.div>
           )}
@@ -611,7 +863,11 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
             >
-              <Analytics />
+              <Analytics
+                hasWatches={watches.length > 0}
+                hasFragrances={fragrances.length > 0}
+                hasAccessories={accessories.length > 0}
+              />
             </motion.div>
           )}
 
@@ -636,28 +892,18 @@ export default function App() {
               exit={{ opacity: 0, y: -8 }}
               className="h-[calc(100vh-12rem)]"
             >
-              <Chat />
-            </motion.div>
-          )}
-
-          {/* ─────────── Profil ─────────── */}
-          {tab === TAB.PROFILE && (
-            <motion.div
-              key="profile"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-            >
-              <Profile user={user} onUpdated={setUser} />
+              <Chat hasWatches={watches.length > 0} hasFragrances={fragrances.length > 0} />
             </motion.div>
           )}
         </AnimatePresence>
+        </ErrorBoundary>
       </main>
 
-      {/* Floating Add-Button nur in der Garderobe */}
+      {/* Kontextsensitiver Add-Button */}
       <AnimatePresence>
-        {tab === TAB.WARDROBE && (
+        {tab === TAB.COLLECTION && (
           <motion.button
+            key={kind}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
@@ -665,12 +911,12 @@ export default function App() {
             whileTap={{ scale: 0.92 }}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 bg-clay-500 text-white rounded-full shadow-soft px-6 py-3.5 font-medium flex items-center gap-2 hover:bg-clay-600 transition"
           >
-            <span className="text-xl leading-none">+</span> Teil hinzufügen
+            <span className="text-xl leading-none">+</span> {ADD_LABEL[kind]}
           </motion.button>
         )}
       </AnimatePresence>
 
-      {/* Tab-Bar unten */}
+      {/* Bottom-Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-sand-50/90 backdrop-blur-md border-t border-sand-100 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-3xl mx-auto flex">
           {TABS.map((t) => {
@@ -681,7 +927,11 @@ export default function App() {
                 onClick={() => setTab(t.id)}
                 className="flex-1 relative py-3 flex flex-col items-center gap-0.5 transition min-w-0"
               >
-                <span className={`text-lg leading-none ${active ? "" : "opacity-50 grayscale"}`}>
+                <span
+                  className={`text-lg leading-none ${
+                    active ? "" : "opacity-50 grayscale"
+                  }`}
+                >
                   {t.icon}
                 </span>
                 <span
@@ -704,26 +954,136 @@ export default function App() {
         </div>
       </nav>
 
-      {meta && (
+      {/* Erfassung: Kleidung bzw. Uhren/Düfte */}
+      {meta && addKind === "clothing" && (
         <AddItem
           open={addOpen}
           onClose={() => setAddOpen(false)}
           meta={meta}
-          onCreated={handleCreated}
+          onCreated={(item) => setItems((prev) => [item, ...prev])}
+        />
+      )}
+      {meta && addKind !== "clothing" && (
+        <AddCollectionItem
+          open={addOpen}
+          kind={addKind}
+          onClose={() => setAddOpen(false)}
+          meta={meta}
+          onCreated={(entry) => {
+            if (addKind === "watch") addWatch(entry);
+            else if (addKind === "accessory") addAccessory(entry);
+            else addFragrance(entry);
+          }}
         />
       )}
 
+      {/* Detail-Ansichten */}
       {meta && (
         <ItemDetail
-          item={selected}
+          item={selectedItem}
           meta={meta}
-          onClose={() => setSelected(null)}
-          onDeleted={handleDeleted}
-          onUpdated={handleUpdated}
+          onClose={() => setSelectedItem(null)}
+          onDeleted={(id) => {
+            setItems((prev) => prev.filter((i) => i.id !== id));
+            setSelectedItem(null);
+          }}
+          onUpdated={(updated) => {
+            setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+            setSelectedItem(updated);
+          }}
         />
       )}
 
-      {/* kein Toast mehr */}
+      <WatchDetail
+        watch={selectedWatch}
+        meta={meta}
+        onClose={() => setSelectedWatch(null)}
+        onDeleted={(id) => {
+          setWatches((prev) => prev.filter((w) => w.id !== id));
+          setSelectedWatch(null);
+          refreshPending();
+        }}
+        onUpdated={(updated) => {
+          addWatch(updated);
+          setSelectedWatch(updated);
+          refreshPending();
+        }}
+      />
+
+      <AccessoryDetail
+        accessory={selectedAccessory}
+        meta={meta}
+        onClose={() => setSelectedAccessory(null)}
+        onDeleted={(id) => {
+          setAccessories((prev) => prev.filter((a) => a.id !== id));
+          setSelectedAccessory(null);
+          refreshPending();
+        }}
+        onUpdated={(updated) => {
+          addAccessory(updated);
+          setSelectedAccessory(updated);
+          refreshPending();
+        }}
+      />
+
+      <FragranceDetail
+        fragrance={selectedFragrance}
+        meta={meta}
+        onClose={() => setSelectedFragrance(null)}
+        onDeleted={(id) => {
+          setFragrances((prev) => prev.filter((f) => f.id !== id));
+          setSelectedFragrance(null);
+          refreshPending();
+        }}
+        onUpdated={(updated) => {
+          addFragrance(updated);
+          setSelectedFragrance(updated);
+          refreshPending();
+        }}
+      />
+
+      {/* Konto */}
+      <AccountSheet
+        open={accountOpen}
+        user={user}
+        onClose={() => setAccountOpen(false)}
+        onOpenProfile={() => setProfileOpen(true)}
+        onLogout={logout}
+      />
+
+      {/* Profil als Vollbild-Overlay, damit es kein eigener Tab sein muss */}
+      <AnimatePresence>
+        {profileOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex flex-col bg-sand-50"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          >
+            <div
+              className="flex-shrink-0 px-5 pb-3 border-b border-sand-100 bg-sand-50/90 backdrop-blur-md flex items-center justify-between"
+              style={{ paddingTop: "max(env(safe-area-inset-top), 1rem)" }}
+            >
+              <h2 className="text-xl font-bold text-ink-900 tracking-tight">
+                Profil & Maße
+              </h2>
+              <button
+                onClick={() => setProfileOpen(false)}
+                className="w-9 h-9 rounded-full bg-sand-100 text-ink-700 flex items-center justify-center text-xl leading-none hover:bg-sand-200 transition"
+                aria-label="Schließen"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="max-w-3xl mx-auto">
+                <Profile user={user} onUpdated={setUser} />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

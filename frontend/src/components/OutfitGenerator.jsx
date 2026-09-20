@@ -3,8 +3,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../api";
 import { SelectField, TextField } from "./Field";
 
-export default function OutfitGenerator({ meta, onItemClick }) {
+export default function OutfitGenerator({
+  meta,
+  onItemClick,
+  onWatchClick,
+  onAccessoryClick,
+  onFragranceClick,
+  useAiImages = false,
+}) {
   const [occasion, setOccasion] = useState("");
+  const [weather, setWeather] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [outfits, setOutfits] = useState(null);
@@ -16,7 +24,7 @@ export default function OutfitGenerator({ meta, onItemClick }) {
     setError("");
     setOutfits(null);
     try {
-      const result = await api.generateOutfits({ occasion, note, count: 5 });
+      const result = await api.generateOutfits({ occasion, weather, note, count: 5 });
       setOutfits(result.outfits || []);
       setExpanded(true);
     } catch (err) {
@@ -30,7 +38,21 @@ export default function OutfitGenerator({ meta, onItemClick }) {
     setOutfits(null);
     setExpanded(false);
     setError("");
+    setWeather("");
   }
+
+// Wetter-Optionen: bewusst kurz und bildlich statt meteorologisch korrekt.
+// Der Nutzer soll schnell tippen, nicht einen Wetterbericht eingeben.
+const WEATHER_OPTIONS = [
+  { value: "heiß (über 28°C)",    icon: "🌡️" },
+  { value: "warm und sonnig",      icon: "☀️" },
+  { value: "angenehm (ca. 18°C)", icon: "🌤️" },
+  { value: "kühl (unter 15°C)",   icon: "🌥️" },
+  { value: "kalt (unter 5°C)",    icon: "🧊" },
+  { value: "regnerisch",          icon: "🌧️" },
+  { value: "windig",              icon: "💨" },
+  { value: "Schnee",              icon: "❄️" },
+];
 
   return (
     <div className="mb-8">
@@ -85,6 +107,36 @@ export default function OutfitGenerator({ meta, onItemClick }) {
             options={meta.occasions}
           />
 
+          {/* Wetter-Chips – optional, ein Tap genügt */}
+          <div className="block">
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-xs font-medium text-ink-700/70 uppercase tracking-wide">
+                Wetter
+              </span>
+              <span className="text-xs text-ink-700/40">optional</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {WEATHER_OPTIONS.map((w) => {
+                const active = weather === w.value;
+                return (
+                  <button
+                    key={w.value}
+                    type="button"
+                    onClick={() => setWeather(active ? "" : w.value)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition flex items-center gap-1 ${
+                      active
+                        ? "bg-clay-500 text-white"
+                        : "bg-sand-100 text-ink-700/70 hover:bg-sand-200"
+                    }`}
+                  >
+                    <span>{w.icon}</span>
+                    <span>{w.value}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <TextField
             label="Zusatzwunsch (optional)"
             value={note}
@@ -128,6 +180,7 @@ export default function OutfitGenerator({ meta, onItemClick }) {
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-lg text-ink-900">
               Deine Outfits für {occasion || "heute"}
+              {weather ? ` · ${weather.split("(")[0].trim()}` : ""}
             </h3>
             <button
               onClick={reset}
@@ -145,6 +198,10 @@ export default function OutfitGenerator({ meta, onItemClick }) {
                 idx={idx}
                 occasion={occasion}
                 onItemClick={onItemClick}
+                onWatchClick={onWatchClick}
+                onAccessoryClick={onAccessoryClick}
+                onFragranceClick={onFragranceClick}
+                useAiImages={useAiImages}
               />
             ))}
           </div>
@@ -173,8 +230,55 @@ export default function OutfitGenerator({ meta, onItemClick }) {
   );
 }
 
+// Vorschau-URL eines Vorschlags. In Outfit-Vorschlägen wird das KI-inszenierte
+// Bild bevorzugt: einheitliche Studiofotos lassen eine Kombination als Ganzes
+// erkennen, gemischte Handyaufnahmen wirken unruhig.
+function suggestionThumb(entry, useAiImages) {
+  if (entry.has_ai_image) {
+    return entry.ai_thumbnail_url || entry.ai_image_url;
+  }
+  return entry.thumbnail_url || entry.image_url;
+}
+
+// Uhr oder Duft als Zeile unter dem Outfit
+function ExtraRow({ label, icon, entry, onClick, useAiImages }) {
+  if (!entry) return null;
+  return (
+    <button
+      onClick={() => onClick?.(entry.watch_id ?? entry.fragrance_id)}
+      className="w-full flex items-center gap-3 text-left rounded-xl bg-sand-50 p-2.5 hover:bg-sand-100 transition"
+    >
+      <img
+        src={suggestionThumb(entry, useAiImages)}
+        alt={entry.name}
+        className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-white"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-ink-700/40">
+          {icon} {label}
+        </p>
+        <p className="text-sm font-medium text-ink-900 truncate">
+          {entry.brand ? `${entry.brand} ${entry.name}` : entry.name}
+        </p>
+        {entry.reason && (
+          <p className="text-xs text-ink-700/60 leading-snug mt-0.5">{entry.reason}</p>
+        )}
+      </div>
+    </button>
+  );
+}
+
 // Einzelnes Outfit mit optionaler KI-Anprobe
-function OutfitCard({ outfit, idx, occasion, onItemClick }) {
+function OutfitCard({
+  outfit,
+  idx,
+  occasion,
+  onItemClick,
+  onWatchClick,
+  onAccessoryClick,
+  onFragranceClick,
+  useAiImages,
+}) {
   const [tryon, setTryon] = useState(null); // { base64, mime }
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -235,7 +339,7 @@ function OutfitCard({ outfit, idx, occasion, onItemClick }) {
           >
             <div className="aspect-square rounded-xl overflow-hidden bg-sand-50 shadow-sm">
               <img
-                src={item.image_url}
+                src={suggestionThumb(item, useAiImages)}
                 alt={item.name}
                 className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
               />
@@ -246,6 +350,33 @@ function OutfitCard({ outfit, idx, occasion, onItemClick }) {
           </button>
         ))}
       </div>
+
+      {/* Uhr, Accessoire und Duft zum Look */}
+      {(outfit.watch || outfit.accessory || outfit.fragrance) && (
+        <div className="space-y-2">
+          <ExtraRow
+            label="Passende Uhr"
+            icon="⌚"
+            entry={outfit.watch}
+            onClick={onWatchClick}
+            useAiImages={useAiImages}
+          />
+          <ExtraRow
+            label="Passendes Accessoire"
+            icon="💎"
+            entry={outfit.accessory}
+            onClick={onAccessoryClick}
+            useAiImages={useAiImages}
+          />
+          <ExtraRow
+            label="Passender Duft"
+            icon="🧴"
+            entry={outfit.fragrance}
+            onClick={onFragranceClick}
+            useAiImages={useAiImages}
+          />
+        </div>
+      )}
 
       {err && (
         <div className="rounded-xl bg-clay-500/10 text-clay-600 text-xs px-3 py-2">{err}</div>

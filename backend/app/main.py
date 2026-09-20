@@ -3,7 +3,6 @@ import json
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,14 +16,57 @@ from .auth import (
 from .analytics import compute_stats
 from .brands import KNOWN_BRANDS, canonicalize, normalize_key
 from .categories import CATEGORIES, CATEGORY_GROUPS, MATERIALS, OCCASIONS, SEASONS, STYLES
+from .collections_api import router as collections_router
+from .collections_api import user_accessories, user_fragrances, user_watches
 from .config import get_settings
 from .database import Base, engine, get_db
-from .migrations import run_migrations
+from .accessories import (
+    ACCESSORY_BRANDS,
+    ACCESSORY_OCCASIONS,
+    ACCESSORY_STYLES,
+    ACCESSORY_TYPE_GROUPS,
+    ACCESSORY_TYPES,
+)
+from .fragrances import (
+    FRAGRANCE_AUDIENCES,
+    FRAGRANCE_BOTTLE_SIZES,
+    FRAGRANCE_BRANDS,
+    FRAGRANCE_CONCENTRATIONS,
+    FRAGRANCE_FAMILIES,
+    FRAGRANCE_LONGEVITIES,
+    FRAGRANCE_OCCASIONS,
+    FRAGRANCE_SEASONS,
+    FRAGRANCE_SHOT_HINTS,
+    FRAGRANCE_SILLAGES,
+    FRAGRANCE_TIMES,
+    NOTE_GROUPS,
+)
+from .migrations import migrate_legacy_accessories, migrate_legacy_watches, run_migrations
 from .measurements import (
     BODY_TYPES,
     FIT_PREFERENCES,
     MEASUREMENT_FIELDS,
     SIZE_FIELDS,
+)
+from .shared import (
+    img_response as _img_response,
+    profile_dict as _profile_dict,
+    raise_image_error as _raise_image_error,
+)
+from .watches import (
+    WATCH_BAND_MATERIALS,
+    WATCH_BAND_TYPES,
+    WATCH_BRANDS,
+    WATCH_CASE_MATERIALS,
+    WATCH_CLASPS,
+    WATCH_COMPLICATIONS,
+    WATCH_CONDITIONS,
+    WATCH_CRYSTALS,
+    WATCH_MOVEMENTS,
+    WATCH_OCCASIONS,
+    WATCH_SETS,
+    WATCH_SHOT_HINTS,
+    WATCH_STYLES,
 )
 from .schemas import (
     AnalyzeResponse,
@@ -34,7 +76,10 @@ from .schemas import (
     ItemMetadata,
     ItemOut,
     ProfileUpdate,
+    RecommendedAccessory,
+    RecommendedFragrance,
     RecommendedPiece,
+    RecommendedWatch,
     RecommendRequest,
     RecommendResponse,
     ShoppingSuggestRequest,
@@ -49,6 +94,8 @@ settings = get_settings()
 
 Base.metadata.create_all(bind=engine)
 run_migrations(engine)
+migrate_legacy_watches(engine)
+migrate_legacy_accessories(engine)
 
 app = FastAPI(title="Vesti API", version="3.0.0")
 
@@ -61,18 +108,7 @@ app.add_middleware(
 )
 
 
-_LOCATION_HINT = (
-    "Das 'In Szene setzen' ist leider im Europäischen Wirtschaftsraum nicht verfügbar — "
-    "Google hat die Nano-Banana-Bildgenerierung in der EU aus regulatorischen Gründen gesperrt. "
-    "Das Backend müsste dafür in einer US-Region laufen (Railway-Region auf us-west1 wechseln)."
-)
-
-
-def _raise_image_error(exc: Exception) -> None:
-    """Wandelt einen Bildgenerierungs-Fehler in eine verständliche HTTP-Antwort um."""
-    if gemini_service._is_location_error(exc):
-        raise HTTPException(status_code=451, detail=_LOCATION_HINT)
-    raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
+app.include_router(collections_router)
 
 
 def _image_url(request: Request, item_id: int) -> str:
@@ -115,6 +151,118 @@ def _to_out(request: Request, item: models.ClothingItem) -> ItemOut:
         out.has_ai_image = True
         out.ai_image_url = _ai_image_url(request, item.id)
         out.ai_thumbnail_url = _ai_thumbnail_url(request, item.id)
+    return out
+
+
+def _to_piece(request: Request, item: models.ClothingItem) -> RecommendedPiece:
+    """Ein Kleidungsstueck als Empfehlungs-Baustein, inklusive KI-Produktfoto.
+
+    Das Frontend zeigt in Vorschlaegen bevorzugt das inszenierte Bild, weil eine
+    Outfit-Zusammenstellung aus einheitlichen Studiofotos deutlich ruhiger wirkt
+    als aus gemischten Handyaufnahmen.
+    """
+    piece = RecommendedPiece(
+        item_id=item.id,
+        name=item.name or item.category,
+        category=item.category,
+        image_url=_image_url(request, item.id),
+        thumbnail_url=_thumbnail_url(request, item.id),
+    )
+    if item.ai_image_data:
+        piece.has_ai_image = True
+        piece.ai_image_url = _ai_image_url(request, item.id)
+        piece.ai_thumbnail_url = _ai_thumbnail_url(request, item.id)
+    return piece
+
+
+def _to_recommended_watch(
+    request: Request,
+    db: Session,
+    user_id: int,
+    watch_id: int | None,
+    reason: str,
+) -> RecommendedWatch | None:
+    """Die von der KI gewaehlte Uhr als Empfehlungs-Baustein."""
+    if not watch_id:
+        return None
+    watch = db.get(models.Watch, watch_id)
+    if not watch or watch.user_id != user_id:
+        return None
+
+    base = str(request.base_url).rstrip("/")
+    label = watch.name or " ".join(p for p in (watch.brand, watch.model) if p) or "Uhr"
+    out = RecommendedWatch(
+        watch_id=watch.id,
+        name=label,
+        brand=watch.brand or "",
+        image_url=f"{base}/api/watches/{watch.id}/image",
+        thumbnail_url=f"{base}/api/watches/{watch.id}/thumbnail",
+        reason=reason,
+    )
+    if watch.ai_image_data:
+        out.has_ai_image = True
+        out.ai_image_url = f"{base}/api/watches/{watch.id}/ai-image"
+        out.ai_thumbnail_url = f"{base}/api/watches/{watch.id}/ai-thumbnail"
+    return out
+
+
+def _to_recommended_fragrance(
+    request: Request,
+    db: Session,
+    user_id: int,
+    fragrance_id: int | None,
+    reason: str,
+) -> RecommendedFragrance | None:
+    """Der von der KI gewaehlte Duft als Empfehlungs-Baustein."""
+    if not fragrance_id:
+        return None
+    frag = db.get(models.Fragrance, fragrance_id)
+    if not frag or frag.user_id != user_id:
+        return None
+
+    base = str(request.base_url).rstrip("/")
+    out = RecommendedFragrance(
+        fragrance_id=frag.id,
+        name=frag.name or "Duft",
+        brand=frag.brand or "",
+        image_url=f"{base}/api/fragrances/{frag.id}/image",
+        thumbnail_url=f"{base}/api/fragrances/{frag.id}/thumbnail",
+        reason=reason,
+    )
+    if frag.ai_image_data:
+        out.has_ai_image = True
+        out.ai_image_url = f"{base}/api/fragrances/{frag.id}/ai-image"
+        out.ai_thumbnail_url = f"{base}/api/fragrances/{frag.id}/ai-thumbnail"
+    return out
+
+
+def _to_recommended_accessory(
+    request: Request,
+    db: Session,
+    user_id: int,
+    acc_id: int | None,
+    reason: str,
+) -> RecommendedAccessory | None:
+    if not acc_id:
+        return None
+    acc = db.get(models.Accessory, acc_id)
+    if not acc or acc.user_id != user_id:
+        return None
+
+    base = str(request.base_url).rstrip("/")
+    out = RecommendedAccessory(
+        accessory_id=acc.id,
+        name=acc.name or acc.type or "Accessoire",
+        type=acc.type or "",
+        brand=acc.brand or "",
+        image_url=f"{base}/api/accessories/{acc.id}/image",
+        thumbnail_url=f"{base}/api/accessories/{acc.id}/thumbnail",
+        reason=reason,
+    )
+    if acc.ai_image_data:
+        out.has_ai_image = True
+        out.ai_image_url = f"{base}/api/accessories/{acc.id}/ai-image"
+        out.ai_thumbnail_url = f"{base}/api/accessories/{acc.id}/ai-thumbnail"
     return out
 
 
@@ -375,12 +523,51 @@ def health():
 @app.get("/api/meta")
 def meta():
     return {
+        # --- Kleidung ---
         "category_groups": CATEGORY_GROUPS,
         "categories": CATEGORIES,  # flache Liste fuer Rueckwaertskompatibilitaet
         "styles": STYLES,
         "occasions": OCCASIONS,
         "seasons": SEASONS,
         "materials": MATERIALS,
+        # --- Uhren ---
+        "watches": {
+            "styles": WATCH_STYLES,
+            "movements": WATCH_MOVEMENTS,
+            "case_materials": WATCH_CASE_MATERIALS,
+            "band_types": WATCH_BAND_TYPES,
+            "band_materials": WATCH_BAND_MATERIALS,
+            "clasps": WATCH_CLASPS,
+            "crystals": WATCH_CRYSTALS,
+            "complications": WATCH_COMPLICATIONS,
+            "occasions": WATCH_OCCASIONS,
+            "conditions": WATCH_CONDITIONS,
+            "sets": WATCH_SETS,
+            "brands": WATCH_BRANDS,
+            "shot_hints": WATCH_SHOT_HINTS,
+        },
+        # --- Accessoires ---
+        "accessories": {
+            "type_groups": ACCESSORY_TYPE_GROUPS,
+            "types": ACCESSORY_TYPES,
+            "styles": ACCESSORY_STYLES,
+            "occasions": ACCESSORY_OCCASIONS,
+        },
+        # --- Düfte ---
+        "fragrances": {
+            "concentrations": FRAGRANCE_CONCENTRATIONS,
+            "families": FRAGRANCE_FAMILIES,
+            "note_groups": NOTE_GROUPS,
+            "sillages": FRAGRANCE_SILLAGES,
+            "longevities": FRAGRANCE_LONGEVITIES,
+            "times": FRAGRANCE_TIMES,
+            "audiences": FRAGRANCE_AUDIENCES,
+            "seasons": FRAGRANCE_SEASONS,
+            "occasions": FRAGRANCE_OCCASIONS,
+            "bottle_sizes": FRAGRANCE_BOTTLE_SIZES,
+            "brands": FRAGRANCE_BRANDS,
+            "shot_hints": FRAGRANCE_SHOT_HINTS,
+        },
     }
 
 
@@ -725,18 +912,6 @@ def list_items(
 
 
 
-# Cache-Header für Bilder: 7 Tage im Browser, 30 Tage im CDN
-_IMAGE_CACHE = "public, max-age=604800, s-maxage=2592000, immutable"
-
-
-def _img_response(data: bytes, mime: str) -> Response:
-    return Response(
-        content=data,
-        media_type=mime,
-        headers={"Cache-Control": _IMAGE_CACHE},
-    )
-
-
 @app.get("/api/items/{item_id}/image")
 def get_item_image(
     item_id: int,
@@ -951,7 +1126,7 @@ def toggle_favorite(
     item = db.get(models.ClothingItem, item_id)
     if not item or item.user_id != user.id:
         raise HTTPException(status_code=404, detail="Nicht gefunden.")
-    item.favorite = bool(payload.get("favorite", False))
+    item.favorite = 1 if payload.get("favorite", False) else 0
     db.commit()
     db.refresh(item)
     return _to_out(request, item)
@@ -1169,9 +1344,20 @@ def recommend(
         "style": base.style,
     }
 
+    watches = user_watches(db, user.id)
+    fragrances = user_fragrances(db, user.id)
+    accessories = user_accessories(db, user.id)
+
     try:
         result = gemini_service.recommend_outfit(
-            base_dict, wardrobe, payload.occasion, payload.note
+            base_dict,
+            wardrobe,
+            payload.occasion,
+            payload.note,
+            watches=watches,
+            fragrances=fragrances,
+            weather=getattr(payload, "weather", "") or "",
+            accessories=accessories,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Empfehlung fehlgeschlagen: {exc}")
@@ -1184,20 +1370,30 @@ def recommend(
         it = by_id.get(pid)
         if not it:
             continue
-        pieces.append(
-            RecommendedPiece(
-                item_id=it.id,
-                name=it.name or it.category,
-                category=it.category,
-                image_url=_image_url(request, it.id),
-            )
-        )
+        pieces.append(_to_piece(request, it))
 
     return RecommendResponse(
         pieces=pieces,
         suitability=result.get("suitability", "geht"),
         suitability_reason=result.get("suitability_reason", ""),
         explanation=result["explanation"],
+        watch=_to_recommended_watch(
+            request, db, user.id, result.get("watch_id"), result.get("watch_reason", "")
+        ),
+        fragrance=_to_recommended_fragrance(
+            request,
+            db,
+            user.id,
+            result.get("fragrance_id"),
+            result.get("fragrance_reason", ""),
+        ),
+        accessory=_to_recommended_accessory(
+            request,
+            db,
+            user.id,
+            result.get("accessory_id"),
+            result.get("accessory_reason", ""),
+        ),
     )
 
 
@@ -1212,6 +1408,7 @@ def generate_outfits_endpoint(
     occasion = payload.get("occasion", "")
     note = payload.get("note", "")
     count = min(10, max(1, int(payload.get("count", 5))))
+    weather = payload.get("weather", "")
     
     ci = models.ClothingItem
     all_items = db.execute(
@@ -1235,13 +1432,26 @@ def generate_outfits_endpoint(
         for r in all_items
     ]
     
+    watches = user_watches(db, user.id)
+    fragrances = user_fragrances(db, user.id)
+    accessories = user_accessories(db, user.id)
+
     try:
-        result = gemini_service.generate_outfits(wardrobe, occasion, note, count)
+        result = gemini_service.generate_outfits(
+            wardrobe,
+            occasion,
+            note,
+            count,
+            watches=watches,
+            fragrances=fragrances,
+            weather=weather,
+            accessories=accessories,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Outfit-Generierung fehlgeschlagen: {exc}")
-    
+
     by_id = {it.id: it for it in all_items}
-    
+
     outfits = []
     for outfit in result["outfits"]:
         items = []
@@ -1249,20 +1459,45 @@ def generate_outfits_endpoint(
             it = by_id.get(item_id)
             if not it:
                 continue
+            piece = _to_piece(request, it)
             items.append({
                 "id": it.id,
-                "name": it.name or it.category,
-                "category": it.category,
-                "image_url": _image_url(request, it.id),
+                "name": piece.name,
+                "category": piece.category,
+                "image_url": piece.image_url,
+                "thumbnail_url": piece.thumbnail_url,
+                "ai_image_url": piece.ai_image_url,
+                "ai_thumbnail_url": piece.ai_thumbnail_url,
+                "has_ai_image": piece.has_ai_image,
             })
-        
+
         if items:  # Only include outfits with valid items
+            watch = _to_recommended_watch(
+                request, db, user.id, outfit.get("watch_id"), outfit.get("watch_reason", "")
+            )
+            fragrance = _to_recommended_fragrance(
+                request,
+                db,
+                user.id,
+                outfit.get("fragrance_id"),
+                outfit.get("fragrance_reason", ""),
+            )
+            accessory_obj = _to_recommended_accessory(
+                request,
+                db,
+                user.id,
+                outfit.get("accessory_id"),
+                outfit.get("accessory_reason", ""),
+            )
             outfits.append({
                 "items": items,
                 "title": outfit["title"],
                 "why": outfit["why"],
+                "watch": watch.model_dump() if watch else None,
+                "fragrance": fragrance.model_dump() if fragrance else None,
+                "accessory": accessory_obj.model_dump() if accessory_obj else None,
             })
-    
+
     return {"outfits": outfits}
 
 
@@ -1357,16 +1592,6 @@ def _full_wardrobe(db: Session, user_id: int) -> list[dict]:
     ]
 
 
-def _profile_dict(user: models.User) -> dict:
-    return {
-        "measurements": user.measurements or {},
-        "sizes": user.sizes or {},
-        "fit_preference": user.fit_preference,
-        "body_type": user.body_type,
-        "style_notes": user.style_notes,
-    }
-
-
 @app.post("/api/shopping/suggest", response_model=ShoppingSuggestResponse)
 def shopping_suggest(
     payload: ShoppingSuggestRequest,
@@ -1383,6 +1608,10 @@ def shopping_suggest(
             profile=_profile_dict(user),
             direction=payload.direction,
             history=history,
+            watches=user_watches(db, user.id),
+            fragrances=user_fragrances(db, user.id),
+            accessories=user_accessories(db, user.id),
+            domain=payload.domain,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Vorschläge fehlgeschlagen: {exc}")
@@ -1416,6 +1645,9 @@ def shopping_fitcheck(
             profile=_profile_dict(user),
             image_bytes=image_bytes,
             image_mime=payload.image_mime or "image/jpeg",
+            watches=user_watches(db, user.id),
+            fragrances=user_fragrances(db, user.id),
+            accessories=user_accessories(db, user.id),
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fit-Check fehlgeschlagen: {exc}")
@@ -1520,6 +1752,9 @@ async def chat(
             history=history_list,
             image_bytes=image_bytes,
             image_mime=image_mime,
+            watches=user_watches(db, user.id),
+            fragrances=user_fragrances(db, user.id),
+            accessories=user_accessories(db, user.id),
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Chat fehlgeschlagen: {exc}")

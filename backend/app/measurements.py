@@ -67,6 +67,14 @@ MEASUREMENT_FIELDS = [
         "tip": "Zwei Finger sollten noch zwischen Maßband und Hals passen.",
     },
     {
+        "key": "wrist",
+        "label": "Handgelenkumfang",
+        "unit": "cm",
+        "group": "Oberkörper",
+        "how": "Miss direkt am Handgelenk dort, wo die Uhr sitzt – also knapp oberhalb des Handgelenkknochens.",
+        "tip": "Bestimmt, welcher Gehäusedurchmesser bei Uhren stimmig aussieht. Nicht zu fest ziehen.",
+    },
+    {
         "key": "inseam",
         "label": "Innenbeinlänge",
         "unit": "cm",

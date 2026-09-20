@@ -21,11 +21,31 @@ function formatMessage(text) {
   return text;
 }
 
-export default function Chat() {
+// Startvorschläge. Uhren und Düfte tauchen nur auf, wenn dort auch was erfasst ist –
+// sonst wäre der Vorschlag eine Einladung zu einer leeren Antwort.
+function starterPrompts(hasWatches, hasFragrances) {
+  const prompts = ["Was ziehe ich heute an?"];
+  if (hasWatches) prompts.push("Welche Uhr passt zum Anzug?");
+  if (hasFragrances) prompts.push("Welcher Duft fürs Büro?");
+  if (hasFragrances) prompts.push("Ist meine Duftsammlung zu einseitig?");
+  if (!hasWatches && !hasFragrances) prompts.push("Was fehlt meiner Garderobe?");
+  return prompts.slice(0, 4);
+}
+
+export default function Chat({ hasWatches = false, hasFragrances = false }) {
+  const scope = [
+    "deine Garderobe",
+    hasWatches && "deine Uhren",
+    hasFragrances && "deine Düfte",
+  ]
+    .filter(Boolean)
+    .join(", ")
+    .replace(/, ([^,]*)$/, " und $1");
+
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: "Hey! 👋 Ich bin dein persönlicher Style-Assistent. Ich kenne deine Garderobe und kann dir bei Outfit-Ideen, Styling-Tipps oder Fashion-Fragen helfen. Du kannst mir auch Bilder zeigen!",
+      content: `Hey! 👋 Ich bin dein persönlicher Berater für Stil, Uhren und Düfte. Ich kenne ${scope} und helfe dir bei Outfit-Ideen, der passenden Uhr zum Anlass oder der Frage, welcher Duft heute stimmt. Du kannst mir auch Bilder zeigen!`,
     },
   ]);
   const [input, setInput] = useState("");
@@ -116,9 +136,9 @@ export default function Chat() {
     <div className="flex flex-col h-full">
       {/* Chat Header */}
       <div className="mb-4">
-        <h2 className="text-lg font-semibold text-ink-900">💬 Style-Chat</h2>
+        <h2 className="text-lg font-semibold text-ink-900">💬 Beratung</h2>
         <p className="text-sm text-ink-700/60">
-          Chatte mit deinem persönlichen Style-Assistenten
+          Stil, Uhren und Düfte – auf Basis dessen, was du wirklich besitzt
         </p>
       </div>
 
@@ -214,6 +234,21 @@ export default function Chat() {
             ×
           </button>
         </motion.div>
+      )}
+
+      {/* Startvorschläge, nur solange noch nichts gefragt wurde */}
+      {messages.length === 1 && !loading && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {starterPrompts(hasWatches, hasFragrances).map((p) => (
+            <button
+              key={p}
+              onClick={() => setInput(p)}
+              className="rounded-full bg-sand-100 text-ink-700/80 text-xs px-3 py-1.5 hover:bg-sand-200 transition"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* Input Area */}
