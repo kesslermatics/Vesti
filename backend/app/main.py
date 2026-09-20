@@ -109,8 +109,9 @@ def _to_out(request: Request, item: models.ClothingItem) -> ItemOut:
     out.thumbnail_urls = [out.thumbnail_url] + [
         _extra_thumbnail_url(request, img.id) for img in (item.extra_images or [])
     ]
-    # KI-Produktfoto (nur wenn vorhanden)
-    if item.ai_image_data:
+    # KI-Produktfoto (nur wenn vorhanden) – has_ai_image ist ein Boolean-Flag,
+    # kein Blob-Zugriff (deferred), spart RAM bei jeder Listenabfrage.
+    if item.has_ai_image:
         out.has_ai_image = True
         out.ai_image_url = _ai_image_url(request, item.id)
         out.ai_thumbnail_url = _ai_thumbnail_url(request, item.id)
@@ -1142,20 +1143,22 @@ def recommend(
     if not base or base.user_id != user.id:
         raise HTTPException(status_code=404, detail="Basis-Teil nicht gefunden.")
 
-    all_items = db.scalars(
-        select(models.ClothingItem).where(models.ClothingItem.user_id == user.id)
+    ci = models.ClothingItem
+    all_items = db.execute(
+        select(ci.id, ci.name, ci.category, ci.color, ci.style, ci.material)
+        .where(ci.user_id == user.id)
     ).all()
     wardrobe = [
         {
-            "id": it.id,
-            "name": it.name,
-            "category": it.category,
-            "color": it.color,
-            "style": it.style,
-            "material": it.material,
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "color": r.color,
+            "style": r.style,
+            "material": r.material,
         }
-        for it in all_items
-        if it.id != base.id
+        for r in all_items
+        if r.id != base.id
     ]
 
     base_dict = {
@@ -1210,24 +1213,26 @@ def generate_outfits_endpoint(
     note = payload.get("note", "")
     count = min(10, max(1, int(payload.get("count", 5))))
     
-    all_items = db.scalars(
-        select(models.ClothingItem).where(models.ClothingItem.user_id == user.id)
+    ci = models.ClothingItem
+    all_items = db.execute(
+        select(ci.id, ci.name, ci.category, ci.color, ci.style, ci.material, ci.quantity)
+        .where(ci.user_id == user.id)
     ).all()
-    
+
     if not all_items:
         raise HTTPException(status_code=400, detail="Deine Garderobe ist noch leer.")
-    
+
     wardrobe = [
         {
-            "id": it.id,
-            "name": it.name,
-            "category": it.category,
-            "color": it.color,
-            "style": it.style,
-            "material": it.material,
-            "quantity": it.quantity,
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "color": r.color,
+            "style": r.style,
+            "material": r.material,
+            "quantity": r.quantity,
         }
-        for it in all_items
+        for r in all_items
     ]
     
     try:
@@ -1320,26 +1325,35 @@ def outfit_tryon(
 
 # ---------- Shopping ----------
 def _full_wardrobe(db: Session, user_id: int) -> list[dict]:
-    """Komplette Garderobe eines Nutzers inkl. Details und Stueckzahl."""
-    items = db.scalars(
-        select(models.ClothingItem).where(models.ClothingItem.user_id == user_id)
+    """Komplette Garderobe eines Nutzers inkl. Details und Stueckzahl.
+
+    Verwendet Column-Projection: lädt ausschließlich die benötigten Metadaten-
+    Spalten, keine Bild-BLOBs (die sind deferred). Verhindert massiven RAM-Verbrauch.
+    """
+    ci = models.ClothingItem
+    rows = db.execute(
+        select(
+            ci.id, ci.name, ci.category, ci.color, ci.material,
+            ci.pattern, ci.style, ci.occasion, ci.season,
+            ci.brand, ci.quantity, ci.details,
+        ).where(ci.user_id == user_id)
     ).all()
     return [
         {
-            "id": it.id,
-            "name": it.name,
-            "category": it.category,
-            "color": it.color,
-            "material": it.material,
-            "pattern": it.pattern,
-            "style": it.style,
-            "occasion": it.occasion,
-            "season": it.season,
-            "brand": it.brand,
-            "quantity": it.quantity,
-            "details": it.details or {},
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "color": r.color,
+            "material": r.material,
+            "pattern": r.pattern,
+            "style": r.style,
+            "occasion": r.occasion,
+            "season": r.season,
+            "brand": r.brand,
+            "quantity": r.quantity,
+            "details": r.details or {},
         }
-        for it in items
+        for r in rows
     ]
 
 
@@ -1411,27 +1425,32 @@ def shopping_fitcheck(
 
 # ---------- Analyse ----------
 def _wardrobe_with_dates(db: Session, user_id: int) -> list[dict]:
-    """Garderobe inkl. created_at fuer die Statistik."""
-    items = db.scalars(
-        select(models.ClothingItem).where(models.ClothingItem.user_id == user_id)
+    """Garderobe inkl. created_at fuer die Statistik. Keine Bild-BLOBs."""
+    ci = models.ClothingItem
+    rows = db.execute(
+        select(
+            ci.id, ci.name, ci.category, ci.color, ci.material,
+            ci.pattern, ci.style, ci.occasion, ci.season,
+            ci.brand, ci.quantity, ci.details, ci.created_at,
+        ).where(ci.user_id == user_id)
     ).all()
     return [
         {
-            "id": it.id,
-            "name": it.name,
-            "category": it.category,
-            "color": it.color,
-            "material": it.material,
-            "pattern": it.pattern,
-            "style": it.style,
-            "occasion": it.occasion,
-            "season": it.season,
-            "brand": it.brand,
-            "quantity": it.quantity,
-            "details": it.details or {},
-            "created_at": it.created_at,
+            "id": r.id,
+            "name": r.name,
+            "category": r.category,
+            "color": r.color,
+            "material": r.material,
+            "pattern": r.pattern,
+            "style": r.style,
+            "occasion": r.occasion,
+            "season": r.season,
+            "brand": r.brand,
+            "quantity": r.quantity,
+            "details": r.details or {},
+            "created_at": r.created_at,
         }
-        for it in items
+        for r in rows
     ]
 
 

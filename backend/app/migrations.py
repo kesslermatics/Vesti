@@ -26,6 +26,7 @@ EXPECTED_COLUMNS: dict[str, list[tuple[str, str, str, str | None, bool]]] = {
         ("ai_image_data",    "BYTEA",       "BLOB",        None,          True),
         ("ai_image_mime",    "VARCHAR(60)", "VARCHAR(60)", "'image/png'", False),
         ("ai_thumbnail_data","BYTEA",       "BLOB",        None,          True),
+        ("has_ai_image",     "BOOLEAN",     "INTEGER",     "false",       False),
     ],
     "users": [
         ("measurements",   "JSONB",      "JSON",       "'{}'", False),
@@ -99,3 +100,55 @@ def run_migrations(engine: Engine) -> None:
                 logger.warning(
                     "Migration fuer %s.%s fehlgeschlagen: %s", table, name, exc
                 )
+
+    _backfill_has_ai_image(engine, is_postgres)
+
+
+def _backfill_has_ai_image(engine: Engine, is_postgres: bool) -> None:
+    """Setzt has_ai_image=true fuer Items die bereits ai_image_data haben.
+
+    Laeuft nur wenn has_ai_image gerade neu angelegt wurde (alle Werte false/0).
+    Liest KEINEN Blob in Python – prueft nur serverseitig ob der Blob NOT NULL ist.
+    """
+    try:
+        with engine.connect() as probe:
+            inspector = inspect(probe)
+            if "clothing_items" not in inspector.get_table_names():
+                return
+
+        with engine.begin() as conn:
+            if is_postgres:
+                # Pruefe ob ueberhaupt Items mit true existieren (dann schon migriert)
+                already = conn.execute(
+                    text("SELECT COUNT(*) FROM clothing_items WHERE has_ai_image = true")
+                ).scalar()
+                if already:
+                    return
+                result = conn.execute(
+                    text(
+                        "UPDATE clothing_items "
+                        "SET has_ai_image = true "
+                        "WHERE ai_image_data IS NOT NULL "
+                        "  AND octet_length(ai_image_data) > 0"
+                    )
+                )
+            else:
+                already = conn.execute(
+                    text("SELECT COUNT(*) FROM clothing_items WHERE has_ai_image = 1")
+                ).scalar()
+                if already:
+                    return
+                result = conn.execute(
+                    text(
+                        "UPDATE clothing_items "
+                        "SET has_ai_image = 1 "
+                        "WHERE ai_image_data IS NOT NULL "
+                        "  AND length(ai_image_data) > 0"
+                    )
+                )
+            if result.rowcount:
+                logger.info(
+                    "Migration: has_ai_image fuer %d Items gesetzt", result.rowcount
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Backfill has_ai_image fehlgeschlagen: %s", exc)

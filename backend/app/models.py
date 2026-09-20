@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 from PIL import Image
 from io import BytesIO
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
+from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from .database import Base
 
@@ -117,16 +117,19 @@ class ClothingItem(Base):
     # Favorit-Flag
     favorite: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
 
-    # Bild direkt in der DB gespeichert
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    # Bild direkt in der DB gespeichert – deferred: wird nur bei explizitem Zugriff geladen,
+    # nicht bei Listenabfragen. Verhindert massiven RAM-Verbrauch bei großen Garderoben.
+    image_data: Mapped[bytes] = deferred(mapped_column(LargeBinary))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
     # Thumbnail für schnelleres Laden in Übersichten
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
 
     # KI-generiertes Produktfoto (optional) + dessen Thumbnail
-    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_image_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
     ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
-    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    # Boolean-Flag: wurde ein KI-Produktfoto generiert? Vermeidet Blob-Zugriff in Listenabfragen.
+    has_ai_image: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -150,9 +153,9 @@ class ItemImage(Base):
         ForeignKey("clothing_items.id", ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_data: Mapped[bytes] = deferred(mapped_column(LargeBinary))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
     # Thumbnail für schnelleres Laden
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
 
     item: Mapped["ClothingItem"] = relationship(back_populates="extra_images")
