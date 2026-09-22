@@ -15,8 +15,23 @@ export default function Profile({ user, onUpdated }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
+  // API Key state
+  const [apiKeyExists, setApiKeyExists] = useState(false);
+  const [apiKeyCreatedAt, setApiKeyCreatedAt] = useState(null);
+  const [newApiKey, setNewApiKey] = useState(null); // shown once after creation
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState("");
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+
   useEffect(() => {
     api.getProfileFields().then(setFields).catch((e) => setError(e.message));
+    api.getApiKey()
+      .then((data) => {
+        setApiKeyExists(data.exists);
+        setApiKeyCreatedAt(data.created_at);
+      })
+      .catch(() => {}); // silently ignore – non-critical
   }, []);
 
   // Messfelder nach Gruppe bündeln
@@ -35,6 +50,46 @@ export default function Profile({ user, onUpdated }) {
     [measurements]
   );
   const totalCount = fields?.measurements.length || 0;
+
+  async function handleCreateApiKey() {
+    setApiKeyLoading(true);
+    setApiKeyError("");
+    setNewApiKey(null);
+    try {
+      const data = await api.createApiKey();
+      setNewApiKey(data.api_key);
+      setApiKeyExists(true);
+      setApiKeyCreatedAt(new Date().toISOString());
+      setShowRevokeConfirm(false);
+    } catch (err) {
+      setApiKeyError(err.message || "Fehler beim Erstellen.");
+    } finally {
+      setApiKeyLoading(false);
+    }
+  }
+
+  async function handleRevokeApiKey() {
+    setApiKeyLoading(true);
+    setApiKeyError("");
+    try {
+      await api.deleteApiKey();
+      setApiKeyExists(false);
+      setApiKeyCreatedAt(null);
+      setNewApiKey(null);
+      setShowRevokeConfirm(false);
+    } catch (err) {
+      setApiKeyError(err.message || "Fehler beim Löschen.");
+    } finally {
+      setApiKeyLoading(false);
+    }
+  }
+
+  async function copyApiKey() {
+    if (!newApiKey) return;
+    await navigator.clipboard.writeText(newApiKey);
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
+  }
 
   async function save() {
     setSaving(true);
@@ -280,6 +335,114 @@ export default function Profile({ user, onUpdated }) {
             className="mt-1 w-full rounded-xl border border-sand-200 px-4 py-2.5 focus:border-clay-500 focus:ring-2 focus:ring-clay-500/20 outline-none transition resize-none"
           />
         </label>
+      </section>
+
+      {/* API Key für MCP */}
+      <section className="bg-white rounded-2xl shadow-soft p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-ink-900">API-Key für MCP</h3>
+          <p className="text-xs text-ink-700/50 mt-1">
+            Mit einem API-Key kannst du deine Vesti-Daten in externe KI-Tools (z.&nbsp;B. Claude,
+            ChatGPT) einbinden. Der Key ist unbegrenzt gültig – verwahre ihn sicher.
+          </p>
+        </div>
+
+        {apiKeyError && (
+          <div className="rounded-xl bg-clay-500/10 text-clay-600 text-xs px-3 py-2">
+            {apiKeyError}
+          </div>
+        )}
+
+        {/* Neu erstellter Key – einmalig angezeigt */}
+        <AnimatePresence>
+          {newApiKey && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="rounded-xl bg-sand-100 border border-sand-200 p-3 space-y-2"
+            >
+              <p className="text-xs font-medium text-ink-800">
+                Dein neuer API-Key – nur jetzt sichtbar:
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 break-all text-xs bg-white rounded-lg px-3 py-2 border border-sand-200 font-mono text-ink-900 select-all">
+                  {newApiKey}
+                </code>
+                <button
+                  onClick={copyApiKey}
+                  className="shrink-0 px-3 py-2 rounded-lg bg-clay-500 text-white text-xs font-medium hover:bg-clay-600 transition"
+                >
+                  {apiKeyCopied ? "✓" : "Kopieren"}
+                </button>
+              </div>
+              <p className="text-xs text-clay-600">
+                Schreib ihn auf oder kopiere ihn jetzt – er wird nicht nochmal angezeigt.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Status + Aktionen */}
+        {!newApiKey && apiKeyExists && (
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <span className="inline-flex items-center gap-1.5 text-xs text-ink-700">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                Key aktiv
+              </span>
+              {apiKeyCreatedAt && (
+                <p className="text-xs text-ink-700/40 mt-0.5">
+                  Erstellt am {new Date(apiKeyCreatedAt).toLocaleDateString("de-DE")}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreateApiKey}
+                disabled={apiKeyLoading}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sand-100 text-ink-700 hover:bg-sand-200 transition disabled:opacity-50"
+              >
+                Neu generieren
+              </button>
+              {!showRevokeConfirm ? (
+                <button
+                  onClick={() => setShowRevokeConfirm(true)}
+                  disabled={apiKeyLoading}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-clay-500/10 text-clay-600 hover:bg-clay-500/20 transition disabled:opacity-50"
+                >
+                  Widerrufen
+                </button>
+              ) : (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handleRevokeApiKey}
+                    disabled={apiKeyLoading}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-clay-500 text-white hover:bg-clay-600 transition disabled:opacity-50"
+                  >
+                    {apiKeyLoading ? "…" : "Ja, löschen"}
+                  </button>
+                  <button
+                    onClick={() => setShowRevokeConfirm(false)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sand-100 text-ink-700 hover:bg-sand-200 transition"
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!newApiKey && !apiKeyExists && (
+          <button
+            onClick={handleCreateApiKey}
+            disabled={apiKeyLoading}
+            className="w-full rounded-xl border border-dashed border-sand-300 text-sm text-ink-700/60 py-3 hover:bg-sand-50 hover:text-ink-800 hover:border-sand-400 transition disabled:opacity-50"
+          >
+            {apiKeyLoading ? "Wird erstellt …" : "+ API-Key generieren"}
+          </button>
+        )}
       </section>
 
       {/* Speichern */}

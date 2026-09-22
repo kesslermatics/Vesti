@@ -67,6 +67,21 @@ def _compress_image(image_data: bytes, max_px: int = 1200, quality: int = 82) ->
         return image_data
 
 
+class ApiKey(Base):
+    """Unveraenderlicher API-Key fuer MCP-Zugriff. Pro User maximal ein Key."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, unique=True
+    )
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    owner: Mapped["User"] = relationship(back_populates="api_key")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -85,6 +100,9 @@ class User(Base):
     body_type: Mapped[str] = mapped_column(String(60), default="")
     style_notes: Mapped[str] = mapped_column(Text, default="")
 
+    api_key: Mapped["ApiKey | None"] = relationship(
+        back_populates="owner", cascade="all, delete-orphan", uselist=False
+    )
     items: Mapped[list["ClothingItem"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )

@@ -11,6 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from . import models
+from .models import ApiKey  # noqa: F401 – re-exported for mcp_api
 from .config import get_settings
 from .database import get_db
 
@@ -41,6 +42,32 @@ def create_access_token(user_id: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {"sub": str(user_id), "exp": expire}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def get_user_by_api_key(
+    api_key: str,
+    db: Session,
+) -> models.User:
+    """Gibt den User zu einem API-Key zurück. Wirft 401 wenn ungültig."""
+    from sqlalchemy import select
+
+    key_obj = db.scalars(
+        select(models.ApiKey).where(models.ApiKey.key == api_key)
+    ).first()
+    if not key_obj:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ungültiger API-Key.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = db.get(models.User, key_obj.user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ungültiger API-Key.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 
 def get_current_user(

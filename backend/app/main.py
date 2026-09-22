@@ -18,6 +18,7 @@ from .brands import KNOWN_BRANDS, canonicalize, normalize_key
 from .categories import CATEGORIES, CATEGORY_GROUPS, MATERIALS, OCCASIONS, SEASONS, STYLES
 from .collections_api import router as collections_router
 from .collections_api import user_accessories, user_fragrances, user_watches
+from .mcp_api import router as mcp_router
 from .config import get_settings
 from .database import Base, engine, get_db
 from .accessories import (
@@ -109,6 +110,7 @@ app.add_middleware(
 
 
 app.include_router(collections_router)
+app.include_router(mcp_router)
 
 
 def _image_url(request: Request, item_id: int) -> str:
@@ -608,7 +610,50 @@ def me(user: models.User = Depends(get_current_user)):
     return UserOut.model_validate(user)
 
 
-# ---------- Marken ----------
+# ---------- API Keys (MCP) ----------
+import secrets as _secrets
+
+
+@app.post("/api/auth/api-key", status_code=201)
+def create_api_key(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Erstellt einen neuen API-Key fuer den Nutzer. Bestehender Key wird ersetzt."""
+    if user.api_key:
+        db.delete(user.api_key)
+        db.flush()
+
+    new_key = _secrets.token_hex(32)  # 64 hex chars = 256 bit
+    key_obj = models.ApiKey(user_id=user.id, key=new_key)
+    db.add(key_obj)
+    db.commit()
+    return {"api_key": new_key}
+
+
+@app.get("/api/auth/api-key")
+def get_api_key(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Gibt den bestehenden API-Key zurueck (nur ob einer existiert + Erstellungsdatum)."""
+    if not user.api_key:
+        return {"exists": False, "created_at": None}
+    return {"exists": True, "created_at": user.api_key.created_at}
+
+
+@app.delete("/api/auth/api-key", status_code=204)
+def delete_api_key(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Loescht den API-Key des Nutzers."""
+    if user.api_key:
+        db.delete(user.api_key)
+        db.commit()
+
+
+
 def _user_brands(db: Session, user_id: int) -> list[str]:
     """Alle Marken, die der Nutzer bereits verwendet, nach Haeufigkeit sortiert."""
     rows = db.execute(

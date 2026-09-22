@@ -718,6 +718,32 @@ export const api = {
     );
   },
 
+  // ---- API Key (MCP) ----
+  async getApiKey() {
+    return handle(await fetch(`${BASE}/api/auth/api-key`, { headers: authHeaders() }));
+  },
+
+  async createApiKey() {
+    return handle(
+      await fetch(`${BASE}/api/auth/api-key`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async deleteApiKey() {
+    const res = await fetch(`${BASE}/api/auth/api-key`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || res.statusText);
+    }
+    // 204 No Content – kein JSON-Body
+  },
+
   async chat(message, history = [], imageFile = null) {
     const form = new FormData();
     form.append("message", message);
