@@ -170,7 +170,7 @@ def _to_piece(request: Request, item: models.ClothingItem) -> RecommendedPiece:
         image_url=_image_url(request, item.id),
         thumbnail_url=_thumbnail_url(request, item.id),
     )
-    if item.ai_image_data:
+    if item.has_ai_image:
         piece.has_ai_image = True
         piece.ai_image_url = _ai_image_url(request, item.id)
         piece.ai_thumbnail_url = _ai_thumbnail_url(request, item.id)
@@ -1365,7 +1365,8 @@ def recommend(
 
     ci = models.ClothingItem
     all_items = db.execute(
-        select(ci.id, ci.name, ci.category, ci.color, ci.style, ci.material)
+        select(ci.id, ci.name, ci.category, ci.color, ci.style, ci.material,
+               ci.has_ai_image)
         .where(ci.user_id == user.id)
     ).all()
     wardrobe = [
