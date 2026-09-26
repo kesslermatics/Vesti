@@ -94,7 +94,7 @@ function GlassCard({ children, className = "" }) {
   );
 }
 
-export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }) {
+export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated, useAiImages = false }) {
   const [occasion, setOccasion] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -680,12 +680,23 @@ export default function ItemDetail({ item, meta, onClose, onDeleted, onUpdated }
                   <h3 className="text-sm font-semibold text-ink-900 uppercase tracking-wide">Dein Outfit</h3>
                   <div className="grid grid-cols-3 gap-3">
                     {result.pieces.map((p) => (
-                      <div key={p.item_id} className="text-center">
-                        <img
-                          src={p.image_url}
-                          alt={p.name}
-                          className="w-full aspect-square object-cover rounded-2xl shadow-soft"
-                        />
+                      <div key={p.item_id} className="text-center relative">
+                        <div className="relative rounded-2xl overflow-hidden shadow-soft aspect-square">
+                          <img
+                            src={
+                              useAiImages && p.has_ai_image
+                                ? p.ai_thumbnail_url || p.ai_image_url
+                                : p.thumbnail_url || p.image_url
+                            }
+                            alt={p.name}
+                            className="w-full h-full object-cover"
+                          />
+                          {useAiImages && p.has_ai_image && (
+                            <span className="absolute bottom-1 left-1 bg-clay-500/90 text-white text-[8px] font-medium rounded-full px-1.5 py-0.5 backdrop-blur-sm">
+                              ✨
+                            </span>
+                          )}
+                        </div>
                         <span className="mt-1 block text-xs text-ink-700/70 truncate">{p.name}</span>
                       </div>
                     ))}

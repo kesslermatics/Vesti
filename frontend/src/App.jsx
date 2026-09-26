@@ -982,6 +982,7 @@ export default function App() {
         <ItemDetail
           item={selectedItem}
           meta={meta}
+          useAiImages={useAiImages}
           onClose={() => setSelectedItem(null)}
           onDeleted={(id) => {
             setItems((prev) => prev.filter((i) => i.id !== id));

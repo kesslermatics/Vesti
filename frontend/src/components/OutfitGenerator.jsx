@@ -234,7 +234,7 @@ const WEATHER_OPTIONS = [
 // Bild bevorzugt: einheitliche Studiofotos lassen eine Kombination als Ganzes
 // erkennen, gemischte Handyaufnahmen wirken unruhig.
 function suggestionThumb(entry, useAiImages) {
-  if (entry.has_ai_image) {
+  if (useAiImages && entry.has_ai_image) {
     return entry.ai_thumbnail_url || entry.ai_image_url;
   }
   return entry.thumbnail_url || entry.image_url;
