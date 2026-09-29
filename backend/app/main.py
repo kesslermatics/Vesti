@@ -1458,7 +1458,7 @@ def generate_outfits_endpoint(
     
     ci = models.ClothingItem
     all_items = db.execute(
-        select(ci.id, ci.name, ci.category, ci.color, ci.style, ci.material, ci.quantity)
+        select(ci.id, ci.name, ci.category, ci.color, ci.style, ci.material, ci.quantity, ci.has_ai_image)
         .where(ci.user_id == user.id)
     ).all()
 
