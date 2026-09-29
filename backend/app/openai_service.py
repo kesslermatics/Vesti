@@ -185,17 +185,41 @@ def _image_parts(
 
 
 def _extract_json(text: str) -> dict[str, Any]:
-    """Robustes Parsen: entfernt evtl. Markdown-Fences und schneidet auf das JSON-Objekt zu."""
+    """Robustes Parsen: entfernt Markdown-Fences und isoliert das erste JSON-Objekt.
+
+    Unterstützt alle gängigen Wrapper die GPT-Modelle zurückgeben:
+      ```json { ... } ```
+      ```{ ... }```
+      { ... }
+    """
     cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```", 2)[1] if "```" in cleaned else cleaned
-        if cleaned.lstrip().startswith("json"):
-            cleaned = cleaned.lstrip()[4:]
+
+    # Markdown-Fences entfernen (```json ... ``` oder ``` ... ```)
+    if "```" in cleaned:
+        # Alles zwischen den äußersten Fences extrahieren
+        inner = cleaned.split("```")
+        # Parts mit Index 1, 3, 5, ... sind Inhalte zwischen Fences
+        for part in inner[1::2]:
+            # Optionalen Sprach-Tag (z.B. "json\n") am Anfang entfernen
+            part = part.lstrip()
+            if part.lower().startswith("json"):
+                part = part[4:].lstrip()
+            part = part.strip()
+            if part.startswith("{"):
+                cleaned = part
+                break
+
+    # Auf erstes { bis letztes } zuschneiden
     start = cleaned.find("{")
     end = cleaned.rfind("}")
-    if start != -1 and end != -1:
+    if start != -1 and end != -1 and end > start:
         cleaned = cleaned[start : end + 1]
-    return json.loads(cleaned)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Letzter Ausweg: leeres Dict statt Crash
+        return {}
 
 
 def quick_analyze_image(
