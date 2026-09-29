@@ -1,14 +1,12 @@
-"""Kapselt die gesamte Gemini-Kommunikation (Bildanalyse + Outfit-Empfehlung)."""
+"""Kapselt die gesamte OpenAI-Kommunikation (Bildanalyse + Outfit-Empfehlung)."""
 
 import base64
 import json
 import mimetypes
 import time
-import urllib.request
 from typing import Any
 
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 from .accessories import (
     ACCESSORY_CONDITIONS,
@@ -53,170 +51,113 @@ from .watches import (
 
 settings = get_settings()
 
-_client: genai.Client | None = None
+_client: OpenAI | None = None
 
-# Retry-Konfiguration fuer transiente Gemini-Fehler (503 Überlastung, 429 Rate-Limit)
-_RETRYABLE_CODES = {429, 500, 503}
+# Retry-Konfiguration fuer transiente OpenAI-Fehler (Rate Limits/Serverfehler).
 _MAX_RETRIES = 4
-_BASE_DELAY = 2.0   # Sekunden, wird bei jedem Versuch verdoppelt
+_BASE_DELAY = 2.0
 
 
 class ImageGenerationUnavailable(Exception):
-    """Bildgenerierung ist am Server-Standort (Region) nicht verfügbar."""
+    """Bildgenerierung ist beim konfigurierten Provider nicht verfügbar."""
 
 
 def _generate_image_http(
     image_parts: list[tuple[bytes, str]],
     prompt: str,
 ) -> tuple[bytes, str] | None:
-    """Bildgenerierung per direktem HTTP-Call statt SDK.
+    """Erstellt oder bearbeitet ein Bild mit OpenAIs Images API.
 
-    Das SDK fuehrt serverseitige Regionspruefungen durch die im EWR scheitern.
-    Der direkte v1beta-Endpunkt umgeht diese Pruefung.
+    Die Referenzbilder werden als Edit-Eingaben übergeben, damit Produktdetails
+    beim Freistellen bzw. Inszenieren möglichst erhalten bleiben.
     """
-    if not settings.gemini_api_key:
-        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt.")
+    if not image_parts:
+        return None
 
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{settings.gemini_image_model}:generateContent?key={settings.gemini_api_key}"
-    )
-
-    # Parts: erst Bilder als inlineData, dann Prompt-Text
-    parts_payload: list[dict] = []
-    for data, mime in image_parts:
-        parts_payload.append({
-            "inlineData": {
-                "mimeType": mime or "image/jpeg",
-                "data": base64.b64encode(data).decode("utf-8"),
-            }
-        })
-    parts_payload.append({"text": prompt})
-
-    body = json.dumps({
-        "contents": [{"parts": parts_payload}],
-        "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"],
-        },
-    }).encode("utf-8")
+    files = [
+        (f"reference-{index}.png", data, mime or "image/png")
+        for index, (data, mime) in enumerate(image_parts)
+        if data
+    ]
+    if not files:
+        return None
 
     last_exc: Exception | None = None
     delay = _BASE_DELAY
-
     for attempt in range(_MAX_RETRIES):
         try:
-            req = urllib.request.Request(
-                url,
-                data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST",
+            result = _get_client().images.edit(
+                model=settings.openai_image_model,
+                image=files,
+                prompt=prompt,
+                size="1024x1536" if "Ganzkörper-Modefoto" in prompt else "1024x1024",
+                output_format="png",
             )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-
-            for candidate in result.get("candidates", []):
-                for part in candidate.get("content", {}).get("parts", []):
-                    inline = part.get("inlineData")
-                    if inline and inline.get("data"):
-                        mime_out = inline.get("mimeType") or "image/png"
-                        return base64.b64decode(inline["data"]), mime_out
-            return None
-
-        except urllib.error.HTTPError as exc:
-            last_exc = exc
-            body_text = ""
-            try:
-                body_text = exc.read().decode("utf-8", errors="replace")
-            except Exception:  # noqa: BLE001
-                pass
-            is_retryable = exc.code in (429, 500, 503)
-            if not is_retryable or attempt == _MAX_RETRIES - 1:
-                raise RuntimeError(
-                    f"Gemini Bildgenerierung HTTP {exc.code}: {body_text[:300]}"
-                ) from exc
-            time.sleep(delay)
-            delay *= 2
-
+            if not result.data or not result.data[0].b64_json:
+                return None
+            return base64.b64decode(result.data[0].b64_json), "image/png"
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
-            msg = str(exc).lower()
-            is_retryable = (
-                "503" in msg or "429" in msg or "500" in msg
-                or "unavailable" in msg or "overloaded" in msg
-                or "timeout" in msg
-            )
-            if not is_retryable or attempt == _MAX_RETRIES - 1:
-                raise
+            if not _is_retryable_error(exc) or attempt == _MAX_RETRIES - 1:
+                raise RuntimeError(f"OpenAI Bildgenerierung fehlgeschlagen: {exc}") from exc
             time.sleep(delay)
             delay *= 2
 
-    if last_exc:
-        raise last_exc
-    return None
+    raise last_exc  # type: ignore[misc]
 
 
-def _is_location_error(exc: Exception) -> bool:
-    """Erkennt geografische Beschränkungen der Bildgenerierung."""
-    msg = str(exc).lower()
-    return (
-        "not available in your country" in msg
-        or "user location is not supported" in msg
-        or "location is not supported" in msg
-        or ("failed_precondition" in msg and "location" in msg)
-    )
+def _is_retryable_error(exc: Exception) -> bool:
+    """Erkennt temporäre OpenAI-API-Fehler ohne Providerdetails nach außen zu geben."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code in {429, 500, 502, 503, 504}:
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in (
+        "rate limit", "timeout", "timed out", "temporarily", "overloaded",
+        "internal server error", "connection error", "unavailable",
+    ))
 
 
-def _extract_response_parts(response: Any) -> list[Any]:
-    """Extrahiert Parts robust aus einer Gemini-Antwort (SDK-versionsunabhaengig)."""
-    # Neuere SDKs: response.parts direkt
-    if getattr(response, "parts", None):
-        return list(response.parts)
-    # Aeltere SDKs: response.candidates[0].content.parts
-    candidates = getattr(response, "candidates", None)
-    if candidates:
-        cand = candidates[0]
-        content = getattr(cand, "content", None)
-        if content is not None:
-            return list(getattr(content, "parts", None) or [])
-    return []
+class _TextResponse:
+    """Kleine Kompatibilitätshülle für die bestehenden Service-Funktionen."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
 
 
-def _get_client() -> genai.Client:
+def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        if not settings.gemini_api_key:
-            raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt.")
-        _client = genai.Client(api_key=settings.gemini_api_key)
+        if not settings.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY ist nicht gesetzt.")
+        _client = OpenAI(api_key=settings.openai_api_key)
     return _client
 
 
-def _call_with_retry(model: str, contents: list) -> Any:
-    """Ruft generate_content mit exponentiellem Backoff auf."""
-    client = _get_client()
+def _call_with_retry(model: str, contents: list[Any]) -> _TextResponse:
+    """Sendet Text und optionale Bild-Data-URLs über die OpenAI Responses API."""
+    user_content: list[dict[str, str]] = []
+    for content in contents:
+        if isinstance(content, str):
+            user_content.append({"type": "input_text", "text": content})
+        elif isinstance(content, dict):
+            user_content.append(content)
+
     last_exc: Exception | None = None
     delay = _BASE_DELAY
-
     for attempt in range(_MAX_RETRIES):
         try:
-            return client.models.generate_content(model=model, contents=contents)
-        except Exception as exc:
-            last_exc = exc
-            msg = str(exc).lower()
-            # Pruefen ob der Fehler retryable ist
-            is_retryable = (
-                "503" in msg
-                or "429" in msg
-                or "500" in msg
-                or "unavailable" in msg
-                or "overloaded" in msg
-                or "high demand" in msg
-                or "resource_exhausted" in msg
-                or "internal" in msg
+            response = _get_client().responses.create(
+                model=model,
+                input=[{"role": "user", "content": user_content}],
             )
-            if not is_retryable or attempt == _MAX_RETRIES - 1:
-                raise
+            return _TextResponse(response.output_text or "")
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if not _is_retryable_error(exc) or attempt == _MAX_RETRIES - 1:
+                raise RuntimeError(f"OpenAI-Anfrage fehlgeschlagen: {exc}") from exc
             time.sleep(delay)
-            delay *= 2  # exponentiell: 2s → 4s → 8s → ...
+            delay *= 2
 
     raise last_exc  # type: ignore[misc]
 
@@ -224,18 +165,23 @@ def _call_with_retry(model: str, contents: list) -> Any:
 def _image_parts(
     images: list[tuple[bytes, str]] | bytes,
     filename: str = "upload.jpg",
-) -> list[Any]:
-    """Normalisiert Bild-Input zu einer Liste von Gemini-Parts."""
+) -> list[dict[str, str]]:
+    """Normalisiert Bild-Input in Responses-API-kompatible Data-URLs."""
     if isinstance(images, (bytes, bytearray)):
         mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
         images = [(bytes(images), mime)]
 
-    parts = []
-    for data, mime in images:
-        if not data:
-            continue
-        parts.append(types.Part.from_bytes(data=data, mime_type=mime or "image/jpeg"))
-    return parts
+    return [
+        {
+            "type": "input_image",
+            "image_url": (
+                f"data:{mime or 'image/jpeg'};base64,"
+                f"{base64.b64encode(data).decode('ascii')}"
+            ),
+        }
+        for data, mime in images
+        if data
+    ]
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -285,7 +231,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.gemini_model,
+        model=settings.openai_model,
         contents=[*parts, prompt],
     )
 
@@ -376,7 +322,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.gemini_model,
+        model=settings.openai_model,
         contents=[*parts, prompt],
     )
 
@@ -433,11 +379,8 @@ Verwende exakt diese Felder:
 Waehle immer den am besten passenden erlaubten Wert. Antworte nur mit dem JSON."""
 
     response = _call_with_retry(
-        model=settings.gemini_model,
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime),
-            prompt,
-        ],
+        model=settings.openai_model,
+        contents=[*_image_parts([(image_bytes, mime)]), prompt],
     )
 
     data = _extract_json(response.text or "{}")
@@ -459,8 +402,8 @@ def generate_product_shot(
 
     Gibt (bytes, mime) des generierten Bildes zurück oder None bei Fehler.
     """
-    # Rohe (bytes, mime) Liste normalisieren – _image_parts() nicht benutzen da
-    # wir hier direkt HTTP aufrufen und keine SDK-Part-Objekte brauchen
+    # Rohe (bytes, mime) Liste normalisieren – _image_parts() nicht benutzen, da
+    # die Bilder hier direkt an die OpenAI Images API übergeben werden.
     if isinstance(images, (bytes, bytearray)):
         mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
         raw_images: list[tuple[bytes, str]] = [(bytes(images), mime)]
@@ -645,7 +588,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.gemini_model,
+        model=settings.openai_model,
         contents=[prompt],
     )
 
@@ -802,7 +745,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.gemini_model,
+        model=settings.openai_model,
         contents=[prompt],
     )
 
@@ -1020,7 +963,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   ]
 }}"""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
     data = _extract_json(response.text or "{}")
 
     raw = data.get("suggestions", [])
@@ -1141,10 +1084,10 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 
     contents: list[Any] = []
     if image_bytes:
-        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
+        contents.extend(_image_parts([(image_bytes, image_mime)]))
     contents.append(prompt)
 
-    response = _call_with_retry(model=settings.gemini_model, contents=contents)
+    response = _call_with_retry(model=settings.openai_model, contents=contents)
     data = _extract_json(response.text or "{}")
 
     try:
@@ -1210,7 +1153,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "style_profile": "in 2-4 Worten der dominante Stil, z.B. 'minimalistisch casual'"
 }}"""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
     data = _extract_json(response.text or "{}")
 
     try:
@@ -1328,10 +1271,10 @@ Antworte in 2-5 Sätzen, es sei denn mehr Detail ist nötig."""
 
     contents: list[Any] = []
     if image_bytes:
-        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
+        contents.extend(_image_parts([(image_bytes, image_mime)]))
     contents.append(prompt)
 
-    response = _call_with_retry(model=settings.gemini_model, contents=contents)
+    response = _call_with_retry(model=settings.openai_model, contents=contents)
     
     return {
         "response": response.text.strip(),
@@ -1460,7 +1403,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "description": "2-3 Sätze auf Deutsch: was diese Uhr charakterisiert, wozu sie gedacht ist"
 }}"""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[*parts, prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[*parts, prompt])
     data = _extract_json(response.text or "{}")
 
     return {
@@ -1620,7 +1563,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "description": "2-3 Sätze auf Deutsch: wie der Duft wirkt und wozu er passt"
 }}"""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[*parts, prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[*parts, prompt])
     data = _extract_json(response.text or "{}")
 
     return {
@@ -1852,7 +1795,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "collection_profile": "in 2-4 Worten der Charakter der Sammlung, z.B. 'sportlich-klassisch'"
 }}"""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
     return _parse_collection_insight(response.text or "{}", "collection_profile")
 
 
@@ -1902,7 +1845,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "collection_profile": "in 2-4 Worten das Duftprofil, z.B. 'holzig-orientalisch'"
 }}"""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
     return _parse_collection_insight(response.text or "{}", "collection_profile")
 
 
@@ -1968,7 +1911,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "gap": "was in der Sammlung für diesen Anlass fehlt, oder leer"
 }}"""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
     data = _extract_json(response.text or "{}")
 
     pick = _pick_index(data.get("pick_index"), fragrances)
@@ -2066,7 +2009,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 WICHTIG: Fülle 'details' NUR mit den Feldern die für den erkannten Typ relevant sind.
 Ein Ring hat keine Verschlussart, eine Tasche keine Ringgröße."""
 
-    response = _call_with_retry(model=settings.gemini_model, contents=[*parts, prompt])
+    response = _call_with_retry(model=settings.openai_model, contents=[*parts, prompt])
     data = _extract_json(response.text or "{}")
 
     # details-Feld normalisieren: nur echte Werte, keine Platzhalter

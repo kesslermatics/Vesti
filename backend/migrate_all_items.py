@@ -1,7 +1,7 @@
 """Migriert alle bestehenden Kleidungsstücke (async, parallel):
 
 1. Neue Analyse (Kategorie, Farbe, Details, Pflegehinweise)
-2. KI-Inszenierungsfoto (gemini-3.1-flash-image-preview)
+2. KI-Inszenierungsfoto (OpenAI-Bildmodell)
 3. Thumbnails (400×400 JPEG) für Haupt- und Zusatzbilder
 4. Vollbilder auf max. 1200px komprimieren
 
@@ -31,7 +31,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import ClothingItem, _compress_image, _create_thumbnail
-from app import gemini_service
+from app import openai_service
 
 
 # ── Progress-Bar ─────────────────────────────────────────────────────────────
@@ -212,13 +212,13 @@ async def _process_item(
 
         # ── 3. Neue Analyse ───────────────────────────────────────────────
         try:
-            # Gemini-Calls sind I/O-bound → run_in_executor damit der Event-Loop läuft
+            # OpenAI-Calls sind I/O-bound → run_in_executor damit der Event-Loop läuft
             quick = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: gemini_service.quick_analyze_image(refs)
+                None, lambda: openai_service.quick_analyze_image(refs)
             )
             category = quick.get("category") or item.category
             detail = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: gemini_service.detail_analyze_image(refs, category=category)
+                None, lambda: openai_service.detail_analyze_image(refs, category=category)
             )
 
             if not dry_run:
@@ -249,7 +249,7 @@ async def _process_item(
         try:
             result = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: gemini_service.generate_product_shot(
+                lambda: openai_service.generate_product_shot(
                     refs,
                     category=item.category,
                     color=item.color,
@@ -319,7 +319,7 @@ async def migrate(
     db_lock = asyncio.Lock()
     bar = _make_bar(total, f"{prefix}Fortschritt")
 
-    # Semaphore begrenzt parallele Gemini-Calls
+    # Semaphore begrenzt parallele OpenAI-Calls
     sem = asyncio.Semaphore(concurrency)
 
     async def _worker(iid: int) -> None:

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import gemini_service, models
+from . import openai_service, models
 from .analytics_collections import (
     compute_fragrance_stats,
     compute_watch_stats,
@@ -120,18 +120,18 @@ def _apply_updates(target: Any, payload: dict, fields: dict[str, str]) -> None:
         if kind == "str":
             setattr(target, field, str(raw or ""))
         elif kind == "float":
-            setattr(target, field, gemini_service._num(raw))
+            setattr(target, field, openai_service._num(raw))
         elif kind == "int":
-            setattr(target, field, gemini_service._int_or_none(raw))
+            setattr(target, field, openai_service._int_or_none(raw))
         elif kind == "list":
-            setattr(target, field, gemini_service._str_list_from(raw))
+            setattr(target, field, openai_service._str_list_from(raw))
         elif kind == "date":
             setattr(target, field, _parse_date(raw))
 
 
 def _fill_level_guard(value: Any) -> int | None:
     """Fuellstand auf 0-100 begrenzen."""
-    parsed = gemini_service._int_or_none(value)
+    parsed = openai_service._int_or_none(value)
     if parsed is None:
         return None
     return max(0, min(100, parsed))
@@ -368,7 +368,7 @@ def analyze_watch(
     known = _collection_brands(db, models.Watch, user.id)
 
     try:
-        data = gemini_service.analyze_watch_image(
+        data = openai_service.analyze_watch_image(
             images, hint=payload.get("hint", ""), known_brands=known
         )
     except Exception as exc:  # noqa: BLE001
@@ -399,7 +399,7 @@ def analyze_watch_shot(
     images = decode_image_payload(payload)
 
     try:
-        result = gemini_service.generate_watch_shot(
+        result = openai_service.generate_watch_shot(
             images,
             brand=payload.get("brand", ""),
             model=payload.get("model", ""),
@@ -565,7 +565,7 @@ def reanalyze_watch(
 
     known = _collection_brands(db, models.Watch, user.id)
     try:
-        data = gemini_service.analyze_watch_image(refs, known_brands=known)
+        data = openai_service.analyze_watch_image(refs, known_brands=known)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
 
@@ -586,7 +586,7 @@ def reanalyze_watch(
 
     if regenerate:
         try:
-            result = gemini_service.generate_watch_shot(
+            result = openai_service.generate_watch_shot(
                 refs,
                 brand=watch.brand,
                 model=watch.model,
@@ -620,7 +620,7 @@ def generate_watch_image(
         raise HTTPException(status_code=400, detail="Keine Bilder als Referenz.")
 
     try:
-        result = gemini_service.generate_watch_shot(
+        result = openai_service.generate_watch_shot(
             refs,
             brand=watch.brand,
             model=watch.model,
@@ -796,7 +796,7 @@ def analyze_fragrance(
     known = _collection_brands(db, models.Fragrance, user.id)
 
     try:
-        data = gemini_service.analyze_fragrance_image(
+        data = openai_service.analyze_fragrance_image(
             images, hint=payload.get("hint", ""), known_brands=known
         )
     except Exception as exc:  # noqa: BLE001
@@ -827,7 +827,7 @@ def analyze_fragrance_shot(
     images = decode_image_payload(payload)
 
     try:
-        result = gemini_service.generate_fragrance_shot(
+        result = openai_service.generate_fragrance_shot(
             images,
             brand=payload.get("brand", ""),
             name=payload.get("name", ""),
@@ -1006,7 +1006,7 @@ def reanalyze_fragrance(
 
     known = _collection_brands(db, models.Fragrance, user.id)
     try:
-        data = gemini_service.analyze_fragrance_image(refs, known_brands=known)
+        data = openai_service.analyze_fragrance_image(refs, known_brands=known)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
 
@@ -1026,7 +1026,7 @@ def reanalyze_fragrance(
 
     if regenerate:
         try:
-            result = gemini_service.generate_fragrance_shot(
+            result = openai_service.generate_fragrance_shot(
                 refs, brand=frag.brand, name=frag.name, family=frag.family
             )
             if result:
@@ -1055,7 +1055,7 @@ def generate_fragrance_image(
         raise HTTPException(status_code=400, detail="Keine Bilder als Referenz.")
 
     try:
-        result = gemini_service.generate_fragrance_shot(
+        result = openai_service.generate_fragrance_shot(
             refs, brand=frag.brand, name=frag.name, family=frag.family
         )
     except HTTPException:
@@ -1229,7 +1229,7 @@ def watch_insights(
 
     stats = compute_watch_stats(watches, wrist_cm(user))
     try:
-        return gemini_service.analyze_watch_collection(
+        return openai_service.analyze_watch_collection(
             watches=watches, profile=profile_dict(user), stats=stats
         )
     except Exception as exc:  # noqa: BLE001
@@ -1255,7 +1255,7 @@ def fragrance_insights(
 
     stats = compute_fragrance_stats(fragrances)
     try:
-        return gemini_service.analyze_fragrance_collection(
+        return openai_service.analyze_fragrance_collection(
             fragrances=fragrances, profile=profile_dict(user), stats=stats
         )
     except Exception as exc:  # noqa: BLE001
@@ -1279,7 +1279,7 @@ def fragrance_advice_endpoint(
         raise HTTPException(status_code=400, detail="Es sind noch keine Düfte erfasst.")
 
     try:
-        result = gemini_service.fragrance_advice(
+        result = openai_service.fragrance_advice(
             question=payload.get("question", ""),
             fragrances=fragrances,
             profile=profile_dict(user),
@@ -1410,7 +1410,7 @@ def analyze_accessory(
     known = _collection_brands(db, models.Accessory, user.id)
 
     try:
-        data = gemini_service.analyze_accessory_image(
+        data = openai_service.analyze_accessory_image(
             images, hint=payload.get("hint", ""), known_brands=known
         )
     except Exception as exc:  # noqa: BLE001
@@ -1440,7 +1440,7 @@ def analyze_accessory_shot(
 ):
     images = decode_image_payload(payload)
     try:
-        result = gemini_service.generate_accessory_shot(
+        result = openai_service.generate_accessory_shot(
             images,
             item_type=payload.get("type", ""),
             brand=payload.get("brand", ""),
@@ -1604,7 +1604,7 @@ def reanalyze_accessory(
 
     known = _collection_brands(db, models.Accessory, user.id)
     try:
-        data = gemini_service.analyze_accessory_image(refs, known_brands=known)
+        data = openai_service.analyze_accessory_image(refs, known_brands=known)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
 
@@ -1630,7 +1630,7 @@ def reanalyze_accessory(
 
     if regenerate:
         try:
-            result = gemini_service.generate_accessory_shot(
+            result = openai_service.generate_accessory_shot(
                 refs, item_type=acc.type, brand=acc.brand,
                 name=acc.name, color=acc.color, material=acc.material,
             )
@@ -1660,7 +1660,7 @@ def generate_accessory_image(
         raise HTTPException(status_code=400, detail="Keine Bilder als Referenz.")
 
     try:
-        result = gemini_service.generate_accessory_shot(
+        result = openai_service.generate_accessory_shot(
             refs, item_type=acc.type, brand=acc.brand,
             name=acc.name, color=acc.color, material=acc.material,
         )

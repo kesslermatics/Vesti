@@ -11,22 +11,14 @@ from typing import Any
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
 
-from . import gemini_service, models
+from . import models
 
 # Cache-Header fuer Bilder: 7 Tage im Browser, 30 Tage im CDN
 IMAGE_CACHE = "public, max-age=604800, s-maxage=2592000, immutable"
 
-LOCATION_HINT = (
-    "Das 'In Szene setzen' ist leider im Europäischen Wirtschaftsraum nicht verfügbar — "
-    "Google hat die Nano-Banana-Bildgenerierung in der EU aus regulatorischen Gründen gesperrt. "
-    "Das Backend müsste dafür in einer US-Region laufen (Railway-Region auf us-west1 wechseln)."
-)
-
 
 def raise_image_error(exc: Exception) -> None:
     """Wandelt einen Bildgenerierungs-Fehler in eine verstaendliche HTTP-Antwort um."""
-    if gemini_service._is_location_error(exc):
-        raise HTTPException(status_code=451, detail=LOCATION_HINT)
     raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
 
 

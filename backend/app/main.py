@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import gemini_service, models
+from . import openai_service, models
 from .auth import (
     create_access_token,
     get_current_user,
@@ -519,7 +519,7 @@ def _generate_welcome_message(new_item: models.ClothingItem, existing_items: lis
 # ---------- Health / Meta ----------
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "model": settings.gemini_model}
+    return {"status": "ok", "model": settings.openai_model}
 
 
 @app.get("/api/meta")
@@ -734,7 +734,7 @@ async def analyze_quick(
         raise HTTPException(status_code=400, detail="Keine Bilddaten empfangen.")
 
     try:
-        result = gemini_service.quick_analyze_image(images, hint=hint)
+        result = openai_service.quick_analyze_image(images, hint=hint)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"KI-Analyse fehlgeschlagen: {exc}")
 
@@ -789,7 +789,7 @@ async def analyze_detail(
     known_brands = _user_brands(db, user.id)
 
     try:
-        data = gemini_service.detail_analyze_image(
+        data = openai_service.detail_analyze_image(
             images, category=category, hint=hint, known_brands=known_brands
         )
     except Exception as exc:  # noqa: BLE001
@@ -827,7 +827,7 @@ async def analyze_product_shot(
         raise HTTPException(status_code=400, detail="Bilddaten ungueltig.")
 
     try:
-        result = gemini_service.generate_product_shot(
+        result = openai_service.generate_product_shot(
             images,
             category=payload.get("category", ""),
             color=payload.get("color", ""),
@@ -860,7 +860,7 @@ async def analyze(
 
     mime = file.content_type or "image/jpeg"
     try:
-        data = gemini_service.analyze_image(contents, file.filename or "upload.jpg", hint=hint)
+        data = openai_service.analyze_image(contents, file.filename or "upload.jpg", hint=hint)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"KI-Analyse fehlgeschlagen: {exc}")
 
@@ -1060,7 +1060,7 @@ def generate_item_image(
             refs.append((extra.image_data, extra.image_mime or "image/jpeg"))
 
     try:
-        result = gemini_service.generate_product_shot(
+        result = openai_service.generate_product_shot(
             refs,
             category=item.category,
             color=item.color,
@@ -1228,7 +1228,7 @@ def reanalyze_item(
 
     # Schritt 1: Kategorie & Farbe
     try:
-        quick = gemini_service.quick_analyze_image(refs)
+        quick = openai_service.quick_analyze_image(refs)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Analyse fehlgeschlagen: {exc}")
 
@@ -1237,7 +1237,7 @@ def reanalyze_item(
     # Schritt 2: Details — mit bekannten Marken des Nutzers
     known_brands = _user_brands(db, user.id)
     try:
-        detail = gemini_service.detail_analyze_image(
+        detail = openai_service.detail_analyze_image(
             refs, category=category, known_brands=known_brands
         )
     except Exception as exc:  # noqa: BLE001
@@ -1266,7 +1266,7 @@ def reanalyze_item(
     # Schritt 3: optional neues KI-Produktfoto
     if regenerate_image:
         try:
-            result = gemini_service.generate_product_shot(
+            result = openai_service.generate_product_shot(
                 refs,
                 category=item.category,
                 color=item.color,
@@ -1395,7 +1395,7 @@ def recommend(
     accessories = user_accessories(db, user.id)
 
     try:
-        result = gemini_service.recommend_outfit(
+        result = openai_service.recommend_outfit(
             base_dict,
             wardrobe,
             payload.occasion,
@@ -1483,7 +1483,7 @@ def generate_outfits_endpoint(
     accessories = user_accessories(db, user.id)
 
     try:
-        result = gemini_service.generate_outfits(
+        result = openai_service.generate_outfits(
             wardrobe,
             occasion,
             note,
@@ -1588,7 +1588,7 @@ def outfit_tryon(
         raise HTTPException(status_code=400, detail="Keine gültigen Teile gefunden.")
 
     try:
-        result = gemini_service.generate_outfit_tryon(refs, labels, occasion)
+        result = openai_service.generate_outfit_tryon(refs, labels, occasion)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -1649,7 +1649,7 @@ def shopping_suggest(
     history = [{"role": m.role, "content": m.content} for m in payload.history]
 
     try:
-        result = gemini_service.shopping_suggestions(
+        result = openai_service.shopping_suggestions(
             wardrobe=wardrobe,
             profile=_profile_dict(user),
             direction=payload.direction,
@@ -1685,7 +1685,7 @@ def shopping_fitcheck(
     wardrobe = _full_wardrobe(db, user.id)
 
     try:
-        result = gemini_service.fit_check(
+        result = openai_service.fit_check(
             product_text=payload.product_text,
             wardrobe=wardrobe,
             profile=_profile_dict(user),
@@ -1753,7 +1753,7 @@ def analytics_insights(
 
     stats = compute_stats(wardrobe)
     try:
-        return gemini_service.analyze_wardrobe(
+        return openai_service.analyze_wardrobe(
             wardrobe=wardrobe,
             profile=_profile_dict(user),
             stats=stats,
@@ -1791,7 +1791,7 @@ async def chat(
     wardrobe = _full_wardrobe(db, user.id)
     
     try:
-        result = gemini_service.chat_with_stylist(
+        result = openai_service.chat_with_stylist(
             message=message.strip(),
             wardrobe=wardrobe,
             profile=_profile_dict(user),

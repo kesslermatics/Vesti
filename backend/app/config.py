@@ -6,13 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Gemini
-    gemini_api_key: str = ""
-    # Multimodal-faehiges Gemini 3.5 Modell (per Env ueberschreibbar)
-    gemini_model: str = "gemini-3.5-flash-lite"
-    # Bildgenerierungs-Modell (Nano Banana) fuer KI-Produktfotos
-    # Preview-Modell umgeht den EU-Geoblocking-Mechanismus der GA-Version
-    gemini_image_model: str = "gemini-3.1-flash-image-preview"
+    # OpenAI
+    openai_api_key: str = ""
+    # Text-, Vision- und Analysemodell; per OPENAI_MODEL überschreibbar.
+    openai_model: str = "gpt-6-sol"
+    # Eigenständiges Bildmodell für Produktbilder und Try-ons.
+    openai_image_model: str = "gpt-image-1"
 
     # Datenbank: lokal SQLite, in Produktion Postgres via DATABASE_URL
     database_url: str = "sqlite:///./vesti.db"
