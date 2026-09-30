@@ -218,10 +218,11 @@ def _widen_columns(engine: Engine, is_postgres: bool) -> None:
 
 
 def _backfill_has_ai_image(engine: Engine, is_postgres: bool) -> None:
-    """Setzt has_ai_image=true fuer Items die bereits ai_image_data haben.
+    """Setzt fehlende KI-Bild-Flags anhand der bereits gespeicherten Bilddaten.
 
-    Laeuft nur wenn has_ai_image gerade neu angelegt wurde (alle Werte false/0).
-    Liest KEINEN Blob in Python – prueft nur serverseitig ob der Blob NOT NULL ist.
+    Läuft sicher bei jedem Start und aktualisiert nur Datensätze, bei denen das
+    Bild existiert, das Flag aber noch false/0 ist. Es wird kein Bild erzeugt,
+    hochgeladen oder verändert.
     """
     try:
         with engine.connect() as probe:
@@ -231,31 +232,22 @@ def _backfill_has_ai_image(engine: Engine, is_postgres: bool) -> None:
 
         with engine.begin() as conn:
             if is_postgres:
-                # Pruefe ob ueberhaupt Items mit true existieren (dann schon migriert)
-                already = conn.execute(
-                    text("SELECT COUNT(*) FROM clothing_items WHERE has_ai_image = true")
-                ).scalar()
-                if already:
-                    return
                 result = conn.execute(
                     text(
                         "UPDATE clothing_items "
                         "SET has_ai_image = true "
-                        "WHERE ai_image_data IS NOT NULL "
+                        "WHERE has_ai_image = false "
+                        "  AND ai_image_data IS NOT NULL "
                         "  AND octet_length(ai_image_data) > 0"
                     )
                 )
             else:
-                already = conn.execute(
-                    text("SELECT COUNT(*) FROM clothing_items WHERE has_ai_image = 1")
-                ).scalar()
-                if already:
-                    return
                 result = conn.execute(
                     text(
                         "UPDATE clothing_items "
                         "SET has_ai_image = 1 "
-                        "WHERE ai_image_data IS NOT NULL "
+                        "WHERE has_ai_image = 0 "
+                        "  AND ai_image_data IS NOT NULL "
                         "  AND length(ai_image_data) > 0"
                     )
                 )
