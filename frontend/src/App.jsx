@@ -206,41 +206,118 @@ function ItemCard({ item, onSelect, viewMode, useAiImages }) {
   );
 }
 
-// Horizontal scrollbarer Segmented Control – auf kleinen Screens kein Wrap
+// Multi-field fuzzy Suche – läuft komplett clientseitig, kein API-Call.
+// Teilt die Query in einzelne Tokens und prüft ob alle im Such-String des Items vorkommen.
+// Das fühlt sich semantisch an: "blaues leichtes Sommerhemd" findet auch ein Leinenhemd
+// das als blau + leicht + Sommer klassifiziert ist, auch wenn der Name anders lautet.
+function buildSearchString(item) {
+  const fields = [
+    item.name, item.category, item.color, item.material,
+    item.pattern, item.style, item.occasion, item.season,
+    item.description, item.brand,
+    // Details-Objekt flach als Werte
+    ...(item.details ? Object.values(item.details).map(String) : []),
+    // Uhren-spezifisch
+    item.model, item.reference, item.movement, item.case_material,
+    item.dial_color, item.band_material, item.crystal,
+    ...(item.complications || []), ...(item.occasions || []),
+    // Düfte
+    item.line, item.concentration, item.family, item.secondary_family,
+    item.perfumer, item.audience,
+    ...(item.top_notes || []), ...(item.heart_notes || []), ...(item.base_notes || []),
+    ...(item.seasons || []),
+    // Accessoires
+    item.type, item.stone, item.secondary_material, item.color,
+    item.condition,
+  ];
+  return fields.filter(Boolean).join(" ").toLowerCase();
+}
+
+function fuzzySearch(items, query) {
+  if (!query.trim()) return items;
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return items.filter((item) => {
+    const haystack = buildSearchString(item);
+    return tokens.every((token) => haystack.includes(token));
+  });
+}
 function KindSwitcher({ kind, setKind, counts }) {
+  const [open, setOpen] = useState(false);
+  const current = KINDS.find((k) => k.id === kind);
+
   return (
-    <div className="relative mb-6 -mx-5 px-5">
-      <div
-        className="flex gap-2 overflow-x-auto pb-1"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+    <div className="border-t border-sand-100 px-5 py-2.5 relative">
+      {/* Trigger */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 group"
       >
-        {KINDS.map((k) => {
-          const active = kind === k.id;
-          return (
-            <button
-              key={k.id}
-              onClick={() => setKind(k.id)}
-              className={`relative flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition ${
-                active
-                  ? "bg-clay-500 text-white shadow-sm"
-                  : "bg-sand-100 text-ink-700/70 hover:bg-sand-200"
-              }`}
+        <span className="text-base leading-none">{current.icon}</span>
+        <span className="text-sm font-semibold text-ink-900">{current.label}</span>
+        {counts[kind] > 0 && (
+          <span className="text-xs text-ink-700/40 tabular-nums">{counts[kind]}</span>
+        )}
+        <motion.svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          className="w-3.5 h-3.5 text-ink-700/40 ml-0.5"
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={{ duration: 0.18 }}
+        >
+          <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+        </motion.svg>
+      </button>
+
+      {/* Dropdown */}
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.97 }}
+              transition={{ duration: 0.15 }}
+              className="absolute left-4 top-full mt-1.5 z-50 bg-white rounded-2xl shadow-lg border border-sand-100 overflow-hidden min-w-[180px]"
             >
-              <span className={active ? "" : "grayscale opacity-70"}>{k.icon}</span>
-              <span>{k.label}</span>
-              {counts[k.id] > 0 && (
-                <span
-                  className={`text-[10px] tabular-nums ${
-                    active ? "text-white/70" : "text-ink-700/40"
-                  }`}
-                >
-                  {counts[k.id]}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+              {KINDS.map((k, i) => {
+                const active = kind === k.id;
+                return (
+                  <button
+                    key={k.id}
+                    onClick={() => { setKind(k.id); setOpen(false); }}
+                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-sm transition
+                      ${i > 0 ? "border-t border-sand-50" : ""}
+                      ${active ? "bg-clay-500/5 text-clay-600" : "text-ink-800 hover:bg-sand-50"}`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className={active ? "" : "opacity-60"}>{k.icon}</span>
+                      <span className={active ? "font-semibold" : "font-medium"}>{k.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {counts[k.id] > 0 && (
+                        <span className={`text-xs tabular-nums ${active ? "text-clay-500" : "text-ink-700/30"}`}>
+                          {counts[k.id]}
+                        </span>
+                      )}
+                      {active && (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-clay-500">
+                          <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -349,6 +426,8 @@ export default function App() {
   const [selectedFragrance, setSelectedFragrance] = useState(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState("");
   const [greeting, setGreeting] = useState(getRandomGreeting());
 
@@ -463,8 +542,9 @@ export default function App() {
     const sorted = [...items].sort(
       (a, b) => new Date(b.created_at) - new Date(a.created_at)
     );
-    const favorites = sorted.filter((it) => it.favorite);
-    const nonFavorites = sorted.filter((it) => !it.favorite);
+    const filtered = fuzzySearch(sorted, searchQuery);
+    const favorites = filtered.filter((it) => it.favorite);
+    const nonFavorites = filtered.filter((it) => !it.favorite);
 
     const groupMap = new Map();
     for (const item of nonFavorites) {
@@ -488,7 +568,7 @@ export default function App() {
     }
 
     return { favorites, groups };
-  }, [items, meta]);
+  }, [items, meta, searchQuery]);
 
   const counts = {
     [KIND.CLOTHING]: items.reduce((sum, i) => sum + (i.quantity || 1), 0),
@@ -566,14 +646,83 @@ export default function App() {
                 : "Deine digitale Garderobe"}
             </p>
           </div>
-          <button
-            onClick={() => setAccountOpen(true)}
-            className="w-10 h-10 flex-shrink-0 rounded-full bg-clay-500 text-white text-sm font-semibold flex items-center justify-center hover:bg-clay-600 transition"
-            aria-label="Konto und Profil"
-          >
-            {initials}
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {tab === TAB.COLLECTION && (
+              <button
+                onClick={() => {
+                  setSearchOpen((v) => !v);
+                  setSearchQuery("");
+                }}
+                aria-label="Suchen"
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition ${
+                  searchOpen
+                    ? "bg-clay-500 text-white"
+                    : "bg-sand-100 text-ink-700/70 hover:bg-sand-200"
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4.5 h-4.5 w-[18px] h-[18px]">
+                  <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={() => setAccountOpen(true)}
+              className="w-10 h-10 flex-shrink-0 rounded-full bg-clay-500 text-white text-sm font-semibold flex items-center justify-center hover:bg-clay-600 transition"
+              aria-label="Konto und Profil"
+            >
+              {initials}
+            </button>
+          </div>
         </div>
+
+        {/* Suchleiste – aufklappbar */}
+        <AnimatePresence>
+          {tab === TAB.COLLECTION && searchOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="overflow-hidden"
+            >
+              <div className="max-w-3xl mx-auto px-5 pb-3">
+                <div className="relative">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                    className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-700/40 pointer-events-none">
+                    <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" />
+                  </svg>
+                  <input
+                    autoFocus
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={
+                      kind === KIND.CLOTHING ? "z.B. blaues Leinenhemd, Sommer, Nike…"
+                      : kind === KIND.WATCHES ? "z.B. Rolex, Automatik, Stahl…"
+                      : kind === KIND.FRAGRANCES ? "z.B. holzig, Dior, EdP…"
+                      : "z.B. Leder, Ring, Gucci…"
+                    }
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-sand-200 bg-white text-sm focus:border-clay-500 focus:ring-2 focus:ring-clay-500/20 outline-none transition"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-700/40 hover:text-ink-700"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {tab === TAB.COLLECTION && (
+          <div className="max-w-3xl mx-auto">
+            <KindSwitcher kind={kind} setKind={setKind} counts={counts} />
+          </div>
+        )}
       </header>
 
       <main className="max-w-3xl mx-auto px-5 pt-6">
@@ -593,8 +742,6 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
             >
-              <KindSwitcher kind={kind} setKind={setKind} counts={counts} />
-
               {/* Hinweis auf migrierte Einträge ohne technische Daten */}
               {pending.total > 0 && kind === KIND.WATCHES && pending.watches > 0 && (
                 <div className="rounded-2xl bg-amber-400/10 px-4 py-3 mb-6">
@@ -719,6 +866,18 @@ export default function App() {
                       </div>
 
                       <div className="space-y-8">
+                        {/* Keine Treffer bei aktiver Suche */}
+                        {searchQuery && grouped.favorites.length === 0 && grouped.groups.length === 0 && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="text-center py-16"
+                          >
+                            <div className="text-4xl mb-3">🔍</div>
+                            <p className="text-sm font-medium text-ink-900">Keine Treffer für „{searchQuery}"</p>
+                            <p className="text-xs text-ink-700/50 mt-1">Versuch andere Begriffe – Farbe, Material, Anlass oder Marke</p>
+                          </motion.div>
+                        )}
                         {grouped.favorites.length > 0 && (
                           <section>
                             <div className="flex items-center gap-3 mb-3">
@@ -800,7 +959,7 @@ export default function App() {
               {kind === KIND.WATCHES && (
                 <CollectionView
                   kind="watch"
-                  entries={watches}
+                  entries={fuzzySearch(watches, searchQuery)}
                   meta={meta}
                   loading={loading}
                   viewMode={viewMode}
@@ -819,7 +978,7 @@ export default function App() {
               {kind === KIND.ACCESSORIES && (
                 <CollectionView
                   kind="accessory"
-                  entries={accessories}
+                  entries={fuzzySearch(accessories, searchQuery)}
                   meta={meta}
                   loading={loading}
                   viewMode={viewMode}
@@ -838,7 +997,7 @@ export default function App() {
               {kind === KIND.FRAGRANCES && (
                 <CollectionView
                   kind="fragrance"
-                  entries={fragrances}
+                  entries={fuzzySearch(fragrances, searchQuery)}
                   meta={meta}
                   loading={loading}
                   viewMode={viewMode}
