@@ -920,6 +920,7 @@ def create_item(
         item.ai_image_data = ai_bytes
         item.ai_image_mime = payload.ai_image_mime or "image/png"
         item.ai_thumbnail_data = models._create_thumbnail(ai_bytes)
+        item.has_ai_image = True
 
     # Zusatzbilder (Futter, Etikett, Detailaufnahmen)
     for idx, extra in enumerate(payload.extra_images or []):
