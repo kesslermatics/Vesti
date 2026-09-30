@@ -2166,3 +2166,137 @@ def _accessories_block(accessories: list[dict[str, Any]], with_ids: bool = True)
         lines.append(f"{prefix}{label} ({', '.join(bits) if bits else 'keine Details'})")
 
     return "\n".join(lines)
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Gespeicherte Outfits – KI-Funktionen
+# ══════════════════════════════════════════════════════════════════════
+
+def generate_outfit_title(
+    items: list[dict[str, Any]],
+    occasion: str = "",
+    season: str = "",
+    weather: str = "",
+) -> dict[str, Any]:
+    """Generiert einen kurzen Titel und eine prägnante Beschreibung für ein gespeichertes Outfit."""
+    lines = [
+        f"- {it.get('name') or it.get('category', '?')} ({it.get('category', '')}"
+        f"{', ' + it.get('color') if it.get('color') else ''}"
+        f"{', ' + it.get('material') if it.get('material') else ''})"
+        for it in items
+    ]
+    items_text = "\n".join(lines) if lines else "(keine Teile)"
+
+    context = []
+    if occasion:
+        context.append(f"Anlass: {occasion}")
+    if season:
+        context.append(f"Saison: {season}")
+    if weather:
+        context.append(f"Wetter: {weather}")
+    context_text = "\n".join(context) if context else ""
+
+    prompt = f"""Du bist ein Stilberater. Erstelle für das folgende Outfit einen prägnanten deutschen Titel und eine kurze Beschreibung.
+
+Outfit-Teile:
+{items_text}
+{context_text}
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "title": "kurzer, treffender Name für das Outfit (max. 5 Wörter), z.B. 'Casual Friday Look' oder 'Eleganter Abendlook'",
+  "description": "ein einziger lockerer Satz auf Deutsch der das Outfit charakterisiert"
+}}"""
+
+    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    data = _extract_json(response.text or "{}")
+    return {
+        "title": str(data.get("title", "Mein Outfit")),
+        "description": str(data.get("description", "")),
+    }
+
+
+def rate_outfit(
+    items: list[dict[str, Any]],
+    occasion: str = "",
+    season: str = "",
+    weather: str = "",
+    watch: dict[str, Any] | None = None,
+    fragrance: dict[str, Any] | None = None,
+    accessory: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Bewertet ein Outfit ehrlich aber konstruktiv.
+
+    Lobt was gut funktioniert, weist nur auf wirklich offensichtliche
+    Probleme hin – kein überkritisches Zerreden.
+    """
+    lines = [
+        f"- {it.get('name') or it.get('category', '?')} "
+        f"({it.get('category', '')}"
+        f"{', ' + it.get('color') if it.get('color') else ''}"
+        f"{', ' + it.get('material') if it.get('material') else ''}"
+        f"{', ' + it.get('style') if it.get('style') else ''})"
+        for it in items
+    ]
+    items_text = "\n".join(lines) if lines else "(keine Teile)"
+
+    extras = []
+    if watch:
+        label = watch.get("name") or f"{watch.get('brand', '')} {watch.get('model', '')}".strip()
+        extras.append(f"Uhr: {label}")
+    if accessory:
+        extras.append(f"Accessoire: {accessory.get('name') or accessory.get('type', '')}")
+    if fragrance:
+        label = f"{fragrance.get('brand', '')} {fragrance.get('name', '')}".strip()
+        extras.append(f"Duft: {label}")
+    extras_text = "\n".join(extras) if extras else ""
+
+    context = []
+    if occasion:
+        context.append(f"Anlass: {occasion}")
+    if season:
+        context.append(f"Saison: {season}")
+    if weather:
+        context.append(f"Wetter: {weather}")
+    context_text = "\n".join(context) if context else "(kein Anlass angegeben)"
+
+    prompt = f"""Du bist ein freundlicher, erfahrener Stilberater. Bewerte dieses Outfit.
+
+Outfit-Teile:
+{items_text}
+{extras_text if extras_text else ""}
+
+Kontext:
+{context_text}
+
+WICHTIG – Dein Bewertungsstil:
+- Fang mit dem Positiven an: was funktioniert gut, was ist stimmig?
+- Weise NUR auf wirklich offensichtliche Schwachstellen hin (z.B. Farben die sich beißen, Stil-Mix der nicht funktioniert, Teile die für den Anlass völlig unpassend sind)
+- Wenn etwas fehlt (z.B. kein Schuh dabei) erwähne es kurz, ohne dramatisch zu sein
+- Kein überkritisches Kleinklein – lieber konstruktiv und ermutigend
+- Sei konkret, nenne Teile beim Namen
+
+Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
+{{
+  "score": Zahl von 0 bis 100,
+  "verdict": "ein Satz: kurzes ehrliches Gesamturteil",
+  "strengths": ["2-3 konkrete Stärken des Outfits"],
+  "suggestions": ["0-2 konstruktive Hinweise – nur bei wirklich relevanten Punkten, sonst leer"],
+  "summary": "2-3 Sätze auf Deutsch: freundliche Gesamteinschätzung die motiviert"
+}}"""
+
+    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    data = _extract_json(response.text or "{}")
+
+    try:
+        score = max(0, min(100, int(float(data.get("score", 75)))))
+    except (ValueError, TypeError):
+        score = 75
+
+    return {
+        "score": score,
+        "verdict": str(data.get("verdict", "")),
+        "strengths": [str(s) for s in (data.get("strengths") or [])],
+        "suggestions": [str(s) for s in (data.get("suggestions") or [])],
+        "summary": str(data.get("summary", "")),
+    }

@@ -759,4 +759,56 @@ export const api = {
       })
     );
   },
+
+  // ---- Gespeicherte Outfits ----
+  async listSavedOutfits() {
+    return handle(await fetch(`${BASE}/api/outfits/saved`, { headers: authHeaders() }));
+  },
+
+  async createSavedOutfit(payload) {
+    return handle(
+      await fetch(`${BASE}/api/outfits/saved`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async updateSavedOutfit(id, payload) {
+    return handle(
+      await fetch(`${BASE}/api/outfits/saved/${id}`, {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
+      })
+    );
+  },
+
+  async deleteSavedOutfit(id) {
+    return handle(
+      await fetch(`${BASE}/api/outfits/saved/${id}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async rateSavedOutfit(id) {
+    return handle(
+      await fetch(`${BASE}/api/outfits/saved/${id}/rate`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
+
+  async regenerateOutfitTitle(id) {
+    return handle(
+      await fetch(`${BASE}/api/outfits/saved/${id}/regenerate-title`, {
+        method: "POST",
+        headers: authHeaders(),
+      })
+    );
+  },
 };

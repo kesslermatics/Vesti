@@ -19,6 +19,7 @@ from .categories import CATEGORIES, CATEGORY_GROUPS, MATERIALS, OCCASIONS, SEASO
 from .collections_api import router as collections_router
 from .collections_api import user_accessories, user_fragrances, user_watches
 from .mcp_api import router as mcp_router
+from .outfits_api import router as outfits_router
 from .config import get_settings
 from .database import Base, engine, get_db
 from .accessories import (
@@ -111,6 +112,7 @@ app.add_middleware(
 
 app.include_router(collections_router)
 app.include_router(mcp_router)
+app.include_router(outfits_router)
 
 
 def _image_url(request: Request, item_id: int) -> str:

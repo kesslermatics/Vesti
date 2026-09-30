@@ -456,3 +456,57 @@ class AccessoryImage(Base):
     thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
 
     accessory: Mapped["Accessory"] = relationship(back_populates="extra_images")
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  Gespeicherte Outfits
+# ══════════════════════════════════════════════════════════════════════
+
+class SavedOutfit(Base):
+    """Ein vom Nutzer gespeichertes oder exportiertes Outfit.
+
+    item_ids, watch_id, fragrance_id, accessory_id verweisen auf die
+    jeweiligen Sammlungs-Einträge. Werden die gelöscht, bleibt das Outfit
+    erhalten – die IDs werden dann einfach nicht mehr aufgelöst.
+    """
+
+    __tablename__ = "saved_outfits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    title: Mapped[str] = mapped_column(String(160), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    # Kleidungsstücke (Liste von IDs)
+    item_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
+    # Optionale Extras aus den Sammlungen
+    watch_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    fragrance_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    accessory_id: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    # Anlass + weitere Tags für Filter
+    occasion: Mapped[str] = mapped_column(String(120), default="")
+    season: Mapped[str] = mapped_column(String(120), default="")
+    weather: Mapped[str] = mapped_column(String(120), default="")
+    tags: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
+    # KI-generiertes Bewertungs-Ergebnis (gecacht, wird bei Bedarf neu erzeugt)
+    ai_rating: Mapped[dict] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    owner: Mapped["User"] = relationship(back_populates="saved_outfits")
+
+
+# User bekommt die neue Relation
+User.saved_outfits = relationship(  # type: ignore[attr-defined]
+    "SavedOutfit",
+    back_populates="owner",
+    cascade="all, delete-orphan",
+    order_by="SavedOutfit.created_at.desc()",
+)

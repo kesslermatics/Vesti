@@ -9,6 +9,7 @@ export default function OutfitGenerator({
   onWatchClick,
   onAccessoryClick,
   onFragranceClick,
+  onExport,
   useAiImages = false,
 }) {
   const [occasion, setOccasion] = useState("");
@@ -202,6 +203,7 @@ const WEATHER_OPTIONS = [
                 onAccessoryClick={onAccessoryClick}
                 onFragranceClick={onFragranceClick}
                 useAiImages={useAiImages}
+                onExport={onExport}
               />
             ))}
           </div>
@@ -278,6 +280,7 @@ function OutfitCard({
   onAccessoryClick,
   onFragranceClick,
   useAiImages,
+  onExport,
 }) {
   const [tryon, setTryon] = useState(null); // { base64, mime }
   const [busy, setBusy] = useState(false);
@@ -380,6 +383,24 @@ function OutfitCard({
 
       {err && (
         <div className="rounded-xl bg-clay-500/10 text-clay-600 text-xs px-3 py-2">{err}</div>
+      )}
+
+      {/* Export als gespeichertes Outfit */}
+      {onExport && (
+        <button
+          onClick={() => onExport({
+            item_ids: outfit.items.map((it) => it.id),
+            watch_id: outfit.watch?.watch_id ?? null,
+            fragrance_id: outfit.fragrance?.fragrance_id ?? null,
+            accessory_id: outfit.accessory?.accessory_id ?? null,
+            occasion,
+            title: outfit.title,
+            why: outfit.why,
+          })}
+          className="w-full flex items-center justify-center gap-2 rounded-xl border border-sand-200 bg-sand-50 text-ink-700/70 text-sm font-medium py-2.5 hover:bg-sand-100 transition"
+        >
+          🔖 Als Outfit speichern
+        </button>
       )}
 
       {/* Anprobe-Button (kostet ~3-4 Cent, daher nur auf Klick) */}

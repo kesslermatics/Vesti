@@ -85,6 +85,16 @@ EXPECTED_COLUMNS: dict[str, list[tuple[str, str, str, str | None, bool]]] = {
         ("ai_image_mime",       "VARCHAR(60)",  "VARCHAR(60)",  "'image/png'", False),
         ("ai_thumbnail_data",   "BYTEA",        "BLOB",         None,          True),
     ],
+    "saved_outfits": [
+        ("watch_id",       "INTEGER",  "INTEGER",  None,   True),
+        ("fragrance_id",   "INTEGER",  "INTEGER",  None,   True),
+        ("accessory_id",   "INTEGER",  "INTEGER",  None,   True),
+        ("season",         "VARCHAR(120)", "VARCHAR(120)", "''", False),
+        ("weather",        "VARCHAR(120)", "VARCHAR(120)", "''", False),
+        ("tags",           "JSONB",    "JSON",     "'[]'", False),
+        ("ai_rating",      "JSONB",    "JSON",     None,   True),
+        ("updated_at",     "TIMESTAMP","DATETIME", None,   True),
+    ],
 }
 
 

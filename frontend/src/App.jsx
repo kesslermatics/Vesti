@@ -13,12 +13,15 @@ import Analytics from "./components/Analytics";
 import OutfitGenerator from "./components/OutfitGenerator";
 import Chat from "./components/Chat";
 import ErrorBoundary from "./components/ErrorBoundary";
+import SavedOutfits from "./components/SavedOutfits";
+import OutfitBuilder from "./components/OutfitBuilder";
 
 // Vier Haupteinträge in der Bottom-Bar. Die Sammlungen sind bewusst KEINE
 // eigenen Tabs, sondern liegen als Segmented Control innerhalb von "Sammlung" –
 // sieben Tabs wären auf einem Handy nicht mehr bedienbar.
 const TAB = {
   COLLECTION: "collection",
+  OUTFITS: "outfits",
   ANALYTICS: "analytics",
   SHOPPING: "shopping",
   CHAT: "chat",
@@ -26,9 +29,10 @@ const TAB = {
 
 const TABS = [
   { id: TAB.COLLECTION, label: "Sammlung", icon: "🧥" },
-  { id: TAB.ANALYTICS, label: "Analyse", icon: "📊" },
-  { id: TAB.SHOPPING, label: "Shopping", icon: "🛍️" },
-  { id: TAB.CHAT, label: "Chat", icon: "💬" },
+  { id: TAB.OUTFITS,    label: "Outfits",  icon: "👔" },
+  { id: TAB.ANALYTICS,  label: "Analyse",  icon: "📊" },
+  { id: TAB.SHOPPING,   label: "Shopping", icon: "🛍️" },
+  { id: TAB.CHAT,       label: "Chat",     icon: "💬" },
 ];
 
 const KIND = {
@@ -428,6 +432,8 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [outfitBuilderOpen, setOutfitBuilderOpen] = useState(false);
+  const [outfitBuilderPrefill, setOutfitBuilderPrefill] = useState(null);
   const [error, setError] = useState("");
   const [greeting, setGreeting] = useState(getRandomGreeting());
 
@@ -815,6 +821,11 @@ export default function App() {
                           const f = fragrances.find((it) => it.id === id);
                           if (f) setSelectedFragrance(f);
                         }}
+                        onExport={(outfit) => {
+                          setOutfitBuilderPrefill(outfit);
+                          setOutfitBuilderOpen(true);
+                          setTab(TAB.OUTFITS);
+                        }}
                       />
 
                       <div className="flex items-center justify-between gap-2 mb-4">
@@ -1014,6 +1025,25 @@ export default function App() {
             </motion.div>
           )}
 
+          {/* ─────────── Outfits ─────────── */}
+          {tab === TAB.OUTFITS && (
+            <motion.div
+              key="outfits"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+            >
+              <SavedOutfits
+                items={items}
+                watches={watches}
+                fragrances={fragrances}
+                accessories={accessories}
+                meta={meta}
+                useAiImages={useAiImages}
+              />
+            </motion.div>
+          )}
+
           {/* ─────────── Analyse ─────────── */}
           {tab === TAB.ANALYTICS && (
             <motion.div
@@ -1073,7 +1103,34 @@ export default function App() {
             <span className="text-xl leading-none">+</span> {ADD_LABEL[kind]}
           </motion.button>
         )}
+        {tab === TAB.OUTFITS && (
+          <motion.button
+            key="new-outfit"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            onClick={() => { setOutfitBuilderPrefill(null); setOutfitBuilderOpen(true); }}
+            whileTap={{ scale: 0.92 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 bg-clay-500 text-white rounded-full shadow-soft px-6 py-3.5 font-medium flex items-center gap-2 hover:bg-clay-600 transition"
+          >
+            <span className="text-xl leading-none">+</span> Outfit erstellen
+          </motion.button>
+        )}
       </AnimatePresence>
+
+      {/* Globaler OutfitBuilder (für Export aus OutfitGenerator) */}
+      <OutfitBuilder
+        open={outfitBuilderOpen}
+        onClose={() => { setOutfitBuilderOpen(false); setOutfitBuilderPrefill(null); }}
+        onSaved={() => {}}
+        items={items}
+        watches={watches}
+        fragrances={fragrances}
+        accessories={accessories}
+        meta={meta}
+        useAiImages={useAiImages}
+        prefill={outfitBuilderPrefill}
+      />
 
       {/* Bottom-Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-sand-50/90 backdrop-blur-md border-t border-sand-100 pb-[env(safe-area-inset-bottom)]">
