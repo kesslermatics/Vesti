@@ -246,9 +246,17 @@ def quick_analyze_image(
 
     prompt = f"""Du bist ein Mode-Experte. Analysiere die Aufnahme(n) und erkenne NUR die Kategorie und die dominante Farbe.{multi_block}{hint_block}
 
+WICHTIG – Kategorie-Auswahl:
+- Wähle EXAKT einen Wert aus der folgenden Liste. Erfinde keine eigene Kategorie.
+- Sportshirt/Sporttop/Sporthose nur wenn das Teil eindeutig für Sport/Fitness gemacht ist (z.B. Dry-Fit-Material, Laufshirt, Radtrikot). Ein normales Hemd oder T-Shirt ist KEIN Sportshirt.
+- Bei einem Hemd mit Kragen und Knöpfen: "Hemd", nicht "Sportshirt".
+- Im Zweifel die allgemeinere Kategorie (z.B. "T-Shirt" statt "Sportshirt").
+
+Erlaubte Kategorien: {', '.join(CATEGORIES)}
+
 Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 {{
-  "category": "einer aus: {', '.join(CATEGORIES[:20])}...",
+  "category": "exakt einer der erlaubten Werte",
   "color": "dominante Farbe(n) auf Deutsch"
 }}"""
 
@@ -385,10 +393,13 @@ def analyze_image(image_bytes: bytes, filename: str, hint: str = "") -> dict[str
     prompt = f"""Du bist ein Mode-Experte und analysierst ein Bild eines einzelnen Kleidungsstuecks.
 Extrahiere die Metadaten und antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein Markdown, kein Text drumherum).{hint_block}
 
+WICHTIG: Wähle für "category" EXAKT einen Wert aus dieser Liste: {', '.join(CATEGORIES)}
+Sportshirt/Sporttop nur wenn das Teil eindeutig für Sport gemacht ist. Ein normales Hemd ist kein Sportshirt.
+
 Verwende exakt diese Felder:
 {{
   "name": "kurzer sprechender Name, z.B. 'Blaues Leinenhemd'",
-  "category": "einer aus: {', '.join(CATEGORIES)}",
+  "category": "exakt einer der erlaubten Werte",
   "color": "dominante Farbe(n) auf Deutsch",
   "material": "einer aus: {', '.join(MATERIALS)}",
   "pattern": "Muster/Textur, z.B. 'uni', 'gestreift', 'kariert', 'gebluemt'",

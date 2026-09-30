@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Text-, Vision- und Analysemodell; per OPENAI_MODEL überschreibbar.
     openai_model: str = "gpt-6-sol"
     # Eigenständiges Bildmodell für Produktbilder und Try-ons.
-    openai_image_model: str = "gpt-image-1-mini"
+    openai_image_model: str = "gpt-image-1.5"
 
     # Datenbank: lokal SQLite, in Produktion Postgres via DATABASE_URL
     database_url: str = "sqlite:///./vesti.db"
