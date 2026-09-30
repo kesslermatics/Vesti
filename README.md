@@ -32,7 +32,7 @@ Vesti/
 │   └── app/
 │       ├── main.py                    REST-Endpunkte (Kleidung, Outfits, Chat, Shopping)
 │       ├── collections_api.py         REST-Endpunkte für Uhren & Düfte
-│       ├── shared.py                  gemeinsame Helfer beider Router
+│       ├── shared.py                  gemeinsame Helfer beider Router 
 │       ├── auth.py                    Passwort-Hashing & JWT
 │       ├── gemini_service.py          KI: Bildanalyse, Inszenierung, Empfehlungen
 │       ├── models.py                  DB-Modelle (User, ClothingItem, Watch, Fragrance)
