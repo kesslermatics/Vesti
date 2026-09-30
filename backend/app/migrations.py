@@ -149,6 +149,62 @@ def run_migrations(engine: Engine) -> None:
                 )
 
     _backfill_has_ai_image(engine, is_postgres)
+    _widen_columns(engine, is_postgres)
+
+
+# Spalten die verbreitert werden müssen (Postgres-only via ALTER COLUMN TYPE).
+# Format: (tabelle, spalte, neuer_typ)
+_WIDEN: list[tuple[str, str, str]] = [
+    ("clothing_items", "color",    "VARCHAR(120)"),
+    ("clothing_items", "material", "VARCHAR(255)"),
+    ("clothing_items", "pattern",  "VARCHAR(255)"),
+    ("clothing_items", "style",    "VARCHAR(120)"),
+    ("clothing_items", "occasion", "VARCHAR(120)"),
+    ("clothing_items", "season",   "VARCHAR(120)"),
+]
+
+
+def _widen_columns(engine: Engine, is_postgres: bool) -> None:
+    """Verbreitert VARCHAR-Spalten auf Postgres idempotent.
+
+    SQLite ignoriert Längenangaben ohnehin, daher nur für Postgres nötig.
+    Prüft zuerst ob die Spalte bereits breit genug ist, um unnötige
+    ALTER TABLE-Statements zu vermeiden.
+    """
+    if not is_postgres:
+        return
+
+    with engine.connect() as conn:
+        for table, column, new_type in _WIDEN:
+            try:
+                row = conn.execute(text(
+                    "SELECT character_maximum_length FROM information_schema.columns "
+                    "WHERE table_name = :t AND column_name = :c"
+                ), {"t": table, "c": column}).fetchone()
+
+                if row is None:
+                    continue  # Spalte existiert nicht – ADD COLUMN übernimmt das
+
+                current_len = row[0]
+                new_len = int(new_type.split("(")[1].rstrip(")"))
+
+                if current_len is not None and current_len >= new_len:
+                    continue  # Bereits breit genug
+
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Breitenprüfung für %s.%s fehlgeschlagen: %s", table, column, exc)
+                continue
+
+            try:
+                with engine.begin() as tx:
+                    tx.execute(text(
+                        f"ALTER TABLE {table} ALTER COLUMN {column} TYPE {new_type}"
+                    ))
+                logger.info("Migration: %s.%s auf %s verbreitert", table, column, new_type)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Verbreiterung %s.%s fehlgeschlagen: %s", table, column, exc
+                )
 
 
 def _backfill_has_ai_image(engine: Engine, is_postgres: bool) -> None:

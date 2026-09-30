@@ -127,12 +127,12 @@ class ClothingItem(Base):
 
     name: Mapped[str] = mapped_column(String(120), default="")
     category: Mapped[str] = mapped_column(String(60), index=True)
-    color: Mapped[str] = mapped_column(String(60), default="")
-    material: Mapped[str] = mapped_column(String(60), default="")
-    pattern: Mapped[str] = mapped_column(String(60), default="")
-    style: Mapped[str] = mapped_column(String(60), default="")
-    occasion: Mapped[str] = mapped_column(String(60), default="")
-    season: Mapped[str] = mapped_column(String(60), default="")
+    color: Mapped[str] = mapped_column(String(120), default="")
+    material: Mapped[str] = mapped_column(String(255), default="")
+    pattern: Mapped[str] = mapped_column(String(255), default="")
+    style: Mapped[str] = mapped_column(String(120), default="")
+    occasion: Mapped[str] = mapped_column(String(120), default="")
+    season: Mapped[str] = mapped_column(String(120), default="")
     description: Mapped[str] = mapped_column(Text, default="")
 
     # Kategorienspezifische Details (z.B. {"schnitt": "slim", "waschung": "dark"})

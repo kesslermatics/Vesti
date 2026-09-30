@@ -68,18 +68,16 @@ def _generate_image_http(
 ) -> tuple[bytes, str] | None:
     """Erstellt oder bearbeitet ein Bild mit OpenAIs Images API.
 
-    Die Referenzbilder werden als Edit-Eingaben übergeben, damit Produktdetails
-    beim Freistellen bzw. Inszenieren möglichst erhalten bleiben.
+    Wir schicken maximal 1 Referenzbild um Kosten zu begrenzen – für
+    Produktfotos auf weißem Hintergrund reicht das Hauptbild vollkommen aus.
     """
     if not image_parts:
         return None
 
-    files = [
-        (f"reference-{index}.png", data, mime or "image/png")
-        for index, (data, mime) in enumerate(image_parts)
-        if data
-    ]
-    if not files:
+    # Nur das erste (Haupt-)Bild als Referenz – weitere sind für die
+    # Bildgenerierung nicht nötig und treiben den Input-Token-Preis hoch.
+    ref_data, ref_mime = image_parts[0]
+    if not ref_data:
         return None
 
     last_exc: Exception | None = None
@@ -88,7 +86,7 @@ def _generate_image_http(
         try:
             result = _get_client().images.edit(
                 model=settings.openai_image_model,
-                image=files,
+                image=(f"reference.png", ref_data, ref_mime or "image/png"),
                 prompt=prompt,
                 size="1024x1536" if "Ganzkörper-Modefoto" in prompt else "1024x1024",
                 output_format="png",
