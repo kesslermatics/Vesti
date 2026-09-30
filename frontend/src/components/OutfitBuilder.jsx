@@ -267,7 +267,9 @@ export default function OutfitBuilder({
       setSeason(prefill.season || "");
       setWeather(prefill.weather || "");
       setTitle(prefill.title || "");
-      setDescription(prefill.why || "");
+      setDescription(prefill.why || prefill.description || "");
+      // Bei Bearbeitung: bekannte ID vorausfüllen damit save() kein Duplikat erzeugt
+      setSavedId(prefill._editId || null);
     } else {
       // Reset
       setSelectedItemIds([]);
@@ -299,6 +301,18 @@ export default function OutfitBuilder({
   const currentFragrance = fragrances.find((f) => f.id === selectedFragranceId) || null;
   const currentAccessory = accessories.find((a) => a.id === selectedAccessoryId) || null;
 
+  const payload = {
+    item_ids: selectedItemIds,
+    watch_id: selectedWatchId,
+    fragrance_id: selectedFragranceId,
+    accessory_id: selectedAccessoryId,
+    occasion,
+    season,
+    weather,
+    title: title.trim(),
+    description: description.trim(),
+  };
+
   async function save() {
     if (selectedItemIds.length === 0) {
       setError("Wähle mindestens ein Kleidungsstück aus.");
@@ -307,20 +321,12 @@ export default function OutfitBuilder({
     setSaving(true);
     setError("");
     try {
-      const saved = await api.createSavedOutfit({
-        item_ids: selectedItemIds,
-        watch_id: selectedWatchId,
-        fragrance_id: selectedFragranceId,
-        accessory_id: selectedAccessoryId,
-        occasion,
-        season,
-        weather,
-        title: title.trim(),
-        description: description.trim(),
-      });
+      const saved = savedId
+        ? await api.updateSavedOutfit(savedId, payload)
+        : await api.createSavedOutfit(payload);
       setSavedId(saved.id);
       if (!title) setTitle(saved.title);
-      if (!description) setDescription(saved.description);
+      if (!description) setDescription(saved.description || "");
       onSaved(saved);
       onClose();
     } catch (e) {
@@ -331,7 +337,7 @@ export default function OutfitBuilder({
   }
 
   async function rateOutfit() {
-    // Zuerst speichern falls noch nicht geschehen
+    // Zuerst speichern/updaten falls nötig
     let idToRate = savedId;
     if (!idToRate) {
       if (selectedItemIds.length === 0) {
@@ -341,19 +347,11 @@ export default function OutfitBuilder({
       setSaving(true);
       setError("");
       try {
-        const saved = await api.createSavedOutfit({
-          item_ids: selectedItemIds,
-          watch_id: selectedWatchId,
-          fragrance_id: selectedFragranceId,
-          accessory_id: selectedAccessoryId,
-          occasion, season, weather,
-          title: title.trim(),
-          description: description.trim(),
-        });
+        const saved = await api.createSavedOutfit(payload);
         idToRate = saved.id;
         setSavedId(saved.id);
         if (!title) setTitle(saved.title);
-        if (!description) setDescription(saved.description);
+        if (!description) setDescription(saved.description || "");
         onSaved(saved);
       } catch (e) {
         setError(e.message || "Speichern fehlgeschlagen.");
