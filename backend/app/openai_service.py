@@ -90,7 +90,7 @@ def _generate_image_http(
     payload: dict[str, Any] = {
         "model": settings.image_model,
         "prompt": prompt,
-        "input_references": [{"image": ref_b64}],
+        "input_references": [{"type": "image_url", "image_url": {"url": ref_b64}}],
         "aspect_ratio": "9:16" if "Ganzkörper-Modefoto" in prompt else "1:1",
         "output_format": "png",
     }
