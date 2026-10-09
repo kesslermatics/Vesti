@@ -521,7 +521,7 @@ def _generate_welcome_message(new_item: models.ClothingItem, existing_items: lis
 # ---------- Health / Meta ----------
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "model": settings.openai_model}
+    return {"status": "ok", "model": settings.model}
 
 
 @app.get("/api/meta")

@@ -6,12 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # OpenAI
-    openai_api_key: str = ""
-    # Text-, Vision- und Analysemodell; per OPENAI_MODEL überschreibbar.
-    openai_model: str = "gpt-6-sol"
-    # Eigenständiges Bildmodell für Produktbilder und Try-ons.
-    openai_image_model: str = "gpt-image-1.5"
+    # OpenRouter
+    openrouter_api_key: str = ""
+    # Text-, Vision- und Analysemodell → Env: MODEL
+    model: str = "google/gemini-3.8-flash"
+    # Bildmodell für Produktbilder und Try-ons → Env: IMAGE_MODEL
+    image_model: str = "google/gemini-nano-banana-2.1"
 
     # Datenbank: lokal SQLite, in Produktion Postgres via DATABASE_URL
     database_url: str = "sqlite:///./vesti.db"

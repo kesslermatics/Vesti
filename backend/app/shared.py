@@ -19,6 +19,12 @@ IMAGE_CACHE = "public, max-age=604800, s-maxage=2592000, immutable"
 
 def raise_image_error(exc: Exception) -> None:
     """Wandelt einen Bildgenerierungs-Fehler in eine verstaendliche HTTP-Antwort um."""
+    from .openai_service import ImageGenerationUnavailable  # lokaler Import vermeidet Zirkelbezug
+    if isinstance(exc, ImageGenerationUnavailable):
+        raise HTTPException(
+            status_code=501,
+            detail="Bildgenerierung ist mit dem aktuellen Provider nicht verfügbar.",
+        )
     raise HTTPException(status_code=502, detail=f"Bildgenerierung fehlgeschlagen: {exc}")
 
 

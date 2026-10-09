@@ -66,42 +66,16 @@ def _generate_image_http(
     image_parts: list[tuple[bytes, str]],
     prompt: str,
 ) -> tuple[bytes, str] | None:
-    """Erstellt oder bearbeitet ein Bild mit OpenAIs Images API.
+    """Bildgenerierung via images.edit wird von OpenRouter nicht unterstützt.
 
-    Wir schicken maximal 1 Referenzbild um Kosten zu begrenzen – für
-    Produktfotos auf weißem Hintergrund reicht das Hauptbild vollkommen aus.
+    OpenRouter ist ein LLM-Gateway ohne nativen Image-Edit-Endpoint. Statt
+    einen Fehler zu werfen geben wir None zurück – der Aufrufer muss das
+    abfangen und dem Nutzer eine passende Meldung zeigen.
     """
-    if not image_parts:
-        return None
-
-    # Nur das erste (Haupt-)Bild als Referenz – weitere sind für die
-    # Bildgenerierung nicht nötig und treiben den Input-Token-Preis hoch.
-    ref_data, ref_mime = image_parts[0]
-    if not ref_data:
-        return None
-
-    last_exc: Exception | None = None
-    delay = _BASE_DELAY
-    for attempt in range(_MAX_RETRIES):
-        try:
-            result = _get_client().images.edit(
-                model=settings.openai_image_model,
-                image=(f"reference.png", ref_data, ref_mime or "image/png"),
-                prompt=prompt,
-                size="1024x1536" if "Ganzkörper-Modefoto" in prompt else "1024x1024",
-                output_format="png",
-            )
-            if not result.data or not result.data[0].b64_json:
-                return None
-            return base64.b64decode(result.data[0].b64_json), "image/png"
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            if not _is_retryable_error(exc) or attempt == _MAX_RETRIES - 1:
-                raise RuntimeError(f"OpenAI Bildgenerierung fehlgeschlagen: {exc}") from exc
-            time.sleep(delay)
-            delay *= 2
-
-    raise last_exc  # type: ignore[misc]
+    raise ImageGenerationUnavailable(
+        "Bildgenerierung (images.edit) wird von OpenRouter nicht unterstützt. "
+        "Bitte einen Provider mit nativer Images-API verwenden."
+    )
 
 
 def _is_retryable_error(exc: Exception) -> bool:
@@ -126,34 +100,48 @@ class _TextResponse:
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        if not settings.openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY ist nicht gesetzt.")
-        _client = OpenAI(api_key=settings.openai_api_key)
+        api_key = settings.openrouter_api_key or settings.openrouter_api_key
+        if not api_key:
+            raise RuntimeError("OPENROUTER_API_KEY ist nicht gesetzt.")
+        _client = OpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
     return _client
 
 
 def _call_with_retry(model: str, contents: list[Any]) -> _TextResponse:
-    """Sendet Text und optionale Bild-Data-URLs über die OpenAI Responses API."""
-    user_content: list[dict[str, str]] = []
+    """Sendet Text und optionale Bild-Data-URLs über die OpenRouter Chat Completions API."""
+    user_content: list[dict] = []
     for content in contents:
         if isinstance(content, str):
-            user_content.append({"type": "input_text", "text": content})
+            user_content.append({"type": "text", "text": content})
         elif isinstance(content, dict):
-            user_content.append(content)
+            # Responses-API-Format (input_text / input_image) → Chat-Format umwandeln
+            if content.get("type") == "input_text":
+                user_content.append({"type": "text", "text": content["text"]})
+            elif content.get("type") == "input_image":
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": content["image_url"]},
+                })
+            else:
+                user_content.append(content)
 
     last_exc: Exception | None = None
     delay = _BASE_DELAY
     for attempt in range(_MAX_RETRIES):
         try:
-            response = _get_client().responses.create(
+            response = _get_client().chat.completions.create(
                 model=model,
-                input=[{"role": "user", "content": user_content}],
+                messages=[{"role": "user", "content": user_content}],
             )
-            return _TextResponse(response.output_text or "")
+            text = (response.choices[0].message.content or "") if response.choices else ""
+            return _TextResponse(text)
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             if not _is_retryable_error(exc) or attempt == _MAX_RETRIES - 1:
-                raise RuntimeError(f"OpenAI-Anfrage fehlgeschlagen: {exc}") from exc
+                raise RuntimeError(f"OpenRouter-Anfrage fehlgeschlagen: {exc}") from exc
             time.sleep(delay)
             delay *= 2
 
@@ -261,7 +249,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.openai_model,
+        model=settings.model,
         contents=[*parts, prompt],
     )
 
@@ -352,7 +340,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.openai_model,
+        model=settings.model,
         contents=[*parts, prompt],
     )
 
@@ -412,7 +400,7 @@ Verwende exakt diese Felder:
 Waehle immer den am besten passenden erlaubten Wert. Antworte nur mit dem JSON."""
 
     response = _call_with_retry(
-        model=settings.openai_model,
+        model=settings.model,
         contents=[*_image_parts([(image_bytes, mime)]), prompt],
     )
 
@@ -621,7 +609,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.openai_model,
+        model=settings.model,
         contents=[prompt],
     )
 
@@ -778,7 +766,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 }}"""
 
     response = _call_with_retry(
-        model=settings.openai_model,
+        model=settings.model,
         contents=[prompt],
     )
 
@@ -996,7 +984,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   ]
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    response = _call_with_retry(model=settings.model, contents=[prompt])
     data = _extract_json(response.text or "{}")
 
     raw = data.get("suggestions", [])
@@ -1120,7 +1108,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
         contents.extend(_image_parts([(image_bytes, image_mime)]))
     contents.append(prompt)
 
-    response = _call_with_retry(model=settings.openai_model, contents=contents)
+    response = _call_with_retry(model=settings.model, contents=contents)
     data = _extract_json(response.text or "{}")
 
     try:
@@ -1186,7 +1174,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "style_profile": "in 2-4 Worten der dominante Stil, z.B. 'minimalistisch casual'"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    response = _call_with_retry(model=settings.model, contents=[prompt])
     data = _extract_json(response.text or "{}")
 
     try:
@@ -1307,7 +1295,7 @@ Antworte in 2-5 Sätzen, es sei denn mehr Detail ist nötig."""
         contents.extend(_image_parts([(image_bytes, image_mime)]))
     contents.append(prompt)
 
-    response = _call_with_retry(model=settings.openai_model, contents=contents)
+    response = _call_with_retry(model=settings.model, contents=contents)
     
     return {
         "response": response.text.strip(),
@@ -1436,7 +1424,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "description": "2-3 Sätze auf Deutsch: was diese Uhr charakterisiert, wozu sie gedacht ist"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[*parts, prompt])
+    response = _call_with_retry(model=settings.model, contents=[*parts, prompt])
     data = _extract_json(response.text or "{}")
 
     return {
@@ -1596,7 +1584,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "description": "2-3 Sätze auf Deutsch: wie der Duft wirkt und wozu er passt"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[*parts, prompt])
+    response = _call_with_retry(model=settings.model, contents=[*parts, prompt])
     data = _extract_json(response.text or "{}")
 
     return {
@@ -1828,7 +1816,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "collection_profile": "in 2-4 Worten der Charakter der Sammlung, z.B. 'sportlich-klassisch'"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    response = _call_with_retry(model=settings.model, contents=[prompt])
     return _parse_collection_insight(response.text or "{}", "collection_profile")
 
 
@@ -1878,7 +1866,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "collection_profile": "in 2-4 Worten das Duftprofil, z.B. 'holzig-orientalisch'"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    response = _call_with_retry(model=settings.model, contents=[prompt])
     return _parse_collection_insight(response.text or "{}", "collection_profile")
 
 
@@ -1944,7 +1932,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "gap": "was in der Sammlung für diesen Anlass fehlt, oder leer"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    response = _call_with_retry(model=settings.model, contents=[prompt])
     data = _extract_json(response.text or "{}")
 
     pick = _pick_index(data.get("pick_index"), fragrances)
@@ -2042,7 +2030,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
 WICHTIG: Fülle 'details' NUR mit den Feldern die für den erkannten Typ relevant sind.
 Ein Ring hat keine Verschlussart, eine Tasche keine Ringgröße."""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[*parts, prompt])
+    response = _call_with_retry(model=settings.model, contents=[*parts, prompt])
     data = _extract_json(response.text or "{}")
 
     # details-Feld normalisieren: nur echte Werte, keine Platzhalter
@@ -2219,7 +2207,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "description": "ein einziger lockerer Satz auf Deutsch der das Outfit charakterisiert"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    response = _call_with_retry(model=settings.model, contents=[prompt])
     data = _extract_json(response.text or "{}")
     return {
         "title": str(data.get("title", "Mein Outfit")),
@@ -2296,7 +2284,7 @@ Antworte AUSSCHLIESSLICH mit diesem JSON (kein Markdown):
   "summary": "2-3 Sätze auf Deutsch: freundliche Gesamteinschätzung die motiviert"
 }}"""
 
-    response = _call_with_retry(model=settings.openai_model, contents=[prompt])
+    response = _call_with_retry(model=settings.model, contents=[prompt])
     data = _extract_json(response.text or "{}")
 
     try:
