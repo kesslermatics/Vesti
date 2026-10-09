@@ -66,16 +66,66 @@ def _generate_image_http(
     image_parts: list[tuple[bytes, str]],
     prompt: str,
 ) -> tuple[bytes, str] | None:
-    """Bildgenerierung via images.edit wird von OpenRouter nicht unterstützt.
+    """Erzeugt ein Bild über OpenRouters /api/v1/images-Endpoint.
 
-    OpenRouter ist ein LLM-Gateway ohne nativen Image-Edit-Endpoint. Statt
-    einen Fehler zu werfen geben wir None zurück – der Aufrufer muss das
-    abfangen und dem Nutzer eine passende Meldung zeigen.
+    Sendet bis zu einem Referenzbild via input_references (base64 data-URL).
+    Gibt (bytes, mime) zurück oder None wenn keine Daten zurückkamen.
     """
-    raise ImageGenerationUnavailable(
-        "Bildgenerierung (images.edit) wird von OpenRouter nicht unterstützt. "
-        "Bitte einen Provider mit nativer Images-API verwenden."
-    )
+    import httpx
+
+    if not image_parts:
+        return None
+
+    api_key = settings.openrouter_api_key
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY ist nicht gesetzt.")
+
+    # Nur das erste Bild als Referenz mitschicken
+    ref_data, ref_mime = image_parts[0]
+    if not ref_data:
+        return None
+
+    ref_b64 = f"data:{ref_mime or 'image/jpeg'};base64,{base64.b64encode(ref_data).decode()}"
+
+    payload: dict[str, Any] = {
+        "model": settings.image_model,
+        "prompt": prompt,
+        "input_references": [{"image": ref_b64}],
+        "aspect_ratio": "9:16" if "Ganzkörper-Modefoto" in prompt else "1:1",
+        "output_format": "png",
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    last_exc: Exception | None = None
+    delay = _BASE_DELAY
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = httpx.post(
+                "https://openrouter.ai/api/v1/images",
+                json=payload,
+                headers=headers,
+                timeout=120.0,
+            )
+            if resp.status_code == 429 or resp.status_code >= 500:
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+            resp.raise_for_status()
+            body = resp.json()
+            b64 = (body.get("data") or [{}])[0].get("b64_json") or ""
+            if not b64:
+                return None
+            return base64.b64decode(b64), "image/png"
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if not _is_retryable_error(exc) or attempt == _MAX_RETRIES - 1:
+                raise RuntimeError(f"Bildgenerierung fehlgeschlagen: {exc}") from exc
+            time.sleep(delay)
+            delay *= 2
+
+    raise last_exc  # type: ignore[misc]
 
 
 def _is_retryable_error(exc: Exception) -> bool:

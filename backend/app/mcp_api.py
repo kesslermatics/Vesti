@@ -1,28 +1,28 @@
 """MCP-kompatibler Read-Only Router.
 
-Alle 6 Endpoints akzeptieren Authentifizierung über einen API-Key, der im
+Alle Endpoints akzeptieren Authentifizierung über einen API-Key, der im
 Header `X-API-Key` übermittelt wird. Die Endpoints geben ausschließlich
 JSON zurück (keine Bilder, keine Binärdaten) und sind damit direkt als
 MCP-Tools nutzbar.
 
 Endpoints:
-    GET /mcp/clothing        – Kleidungsstücke
-    GET /mcp/watches         – Uhren
-    GET /mcp/fragrances      – Düfte
-    GET /mcp/accessories     – Accessoires
+    GET /mcp/clothing        – Kleidungsstücke (Filter: category, color, style, occasion, season, brand, favorite)
+    GET /mcp/watches         – Uhren          (Filter: brand, style, movement, condition, favorite)
+    GET /mcp/fragrances      – Düfte          (Filter: brand, family, concentration, season, occasion, favorite)
+    GET /mcp/accessories     – Accessoires    (Filter: type, brand, style, occasion, favorite)
     GET /mcp/analytics/watches      – Uhren-Statistiken
     GET /mcp/analytics/fragrances   – Duft-Statistiken
     GET /mcp/analytics/accessories  – Accessoire-Statistiken
 """
 
 from collections import Counter
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
-from .analytics import compute_stats
 from .analytics_collections import compute_fragrance_stats, compute_watch_stats
 from .auth import get_user_by_api_key
 from .collections_api import (
@@ -50,28 +50,66 @@ def _api_key_user(
     return get_user_by_api_key(x_api_key, db)
 
 
+# ── Hilfsfunktionen ────────────────────────────────────────────────────────────
+
+def _icontains(value: str, query: str) -> bool:
+    """Prüft ob value den query-String case-insensitiv enthält."""
+    return query.lower() in (value or "").lower()
+
+
+def _list_icontains(lst: list, query: str) -> bool:
+    """Prüft ob ein Element der Liste den query-String enthält (case-insensitiv)."""
+    q = query.lower()
+    return any(q in (item or "").lower() for item in lst)
+
+
 # ── Kleidung ───────────────────────────────────────────────────────────────────
 
 @router.get(
     "/clothing",
     summary="Kleidungsstücke abrufen",
     description=(
-        "Gibt alle Kleidungsstücke des Nutzers zurück. "
+        "Gibt Kleidungsstücke des Nutzers zurück. Alle Filter sind optional und "
+        "werden als case-insensitiver Substring-Match angewendet. "
         "Felder: id, name, category, color, material, pattern, style, occasion, "
-        "season, description, details, quantity, brand, favorite, created_at."
+        "season, description, details, quantity, brand, favorite, has_ai_image, created_at."
     ),
 )
 def mcp_clothing(
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
+    category: Optional[str] = Query(None, description="Kategorie, z.B. 'Oberteile'"),
+    color: Optional[str] = Query(None, description="Farbe, z.B. 'Weiß'"),
+    style: Optional[str] = Query(None, description="Stil, z.B. 'Business'"),
+    occasion: Optional[str] = Query(None, description="Anlass, z.B. 'Formell'"),
+    season: Optional[str] = Query(None, description="Saison, z.B. 'Sommer'"),
+    brand: Optional[str] = Query(None, description="Marke, z.B. 'Zara'"),
+    favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
     items = db.scalars(
         select(models.ClothingItem)
         .where(models.ClothingItem.user_id == user.id)
         .order_by(models.ClothingItem.created_at.desc())
     ).all()
-    return [
-        {
+
+    result = []
+    for it in items:
+        if category is not None and not _icontains(it.category, category):
+            continue
+        if color is not None and not _icontains(it.color, color):
+            continue
+        if style is not None and not _icontains(it.style, style):
+            continue
+        if occasion is not None and not _icontains(it.occasion, occasion):
+            continue
+        if season is not None and not _icontains(it.season, season):
+            continue
+        if brand is not None and not _icontains(it.brand, brand):
+            continue
+        if favorite is not None and bool(it.favorite) != favorite:
+            continue
+
+        result.append({
             "id": it.id,
             "name": it.name,
             "category": it.category,
@@ -88,9 +126,9 @@ def mcp_clothing(
             "favorite": bool(it.favorite),
             "has_ai_image": bool(it.has_ai_image),
             "created_at": it.created_at,
-        }
-        for it in items
-    ]
+        })
+
+    return result
 
 
 # ── Uhren ──────────────────────────────────────────────────────────────────────
@@ -99,7 +137,8 @@ def mcp_clothing(
     "/watches",
     summary="Uhren abrufen",
     description=(
-        "Gibt alle Uhren der Sammlung zurück. "
+        "Gibt Uhren der Sammlung zurück. Alle Filter sind optional und "
+        "werden als case-insensitiver Substring-Match angewendet. "
         "Felder: id, name, brand, model, reference, year, movement, case_material, "
         "case_diameter, dial_color, band_material, style, occasions, complications, "
         "condition, purchase_price, current_value, favorite, needs_review, "
@@ -109,8 +148,32 @@ def mcp_clothing(
 def mcp_watches(
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
+    brand: Optional[str] = Query(None, description="Marke, z.B. 'Rolex'"),
+    style: Optional[str] = Query(None, description="Stil, z.B. 'Sport'"),
+    movement: Optional[str] = Query(None, description="Werk, z.B. 'Automatik'"),
+    condition: Optional[str] = Query(None, description="Zustand, z.B. 'Sehr gut'"),
+    favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
-    return user_watches(db, user.id)
+    watches = user_watches(db, user.id)
+
+    if brand is None and style is None and movement is None and condition is None and favorite is None:
+        return watches
+
+    result = []
+    for w in watches:
+        if brand is not None and not _icontains(w.get("brand", ""), brand):
+            continue
+        if style is not None and not _icontains(w.get("style", ""), style):
+            continue
+        if movement is not None and not _icontains(w.get("movement", ""), movement):
+            continue
+        if condition is not None and not _icontains(w.get("condition", ""), condition):
+            continue
+        if favorite is not None and bool(w.get("favorite")) != favorite:
+            continue
+        result.append(w)
+
+    return result
 
 
 # ── Düfte ──────────────────────────────────────────────────────────────────────
@@ -119,7 +182,9 @@ def mcp_watches(
     "/fragrances",
     summary="Düfte abrufen",
     description=(
-        "Gibt alle Düfte der Sammlung zurück. "
+        "Gibt Düfte der Sammlung zurück. Alle Filter sind optional und "
+        "werden als case-insensitiver Substring-Match angewendet. "
+        "season und occasion matchen gegen die jeweiligen Listen-Felder. "
         "Felder: id, name, brand, line, concentration, year, family, "
         "top_notes, heart_notes, base_notes, sillage, longevity, occasions, "
         "seasons, bottle_size, fill_level, quantity, purchase_price, "
@@ -129,8 +194,38 @@ def mcp_watches(
 def mcp_fragrances(
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
+    brand: Optional[str] = Query(None, description="Marke, z.B. 'Dior'"),
+    family: Optional[str] = Query(None, description="Duftfamilie, z.B. 'Holzig'"),
+    concentration: Optional[str] = Query(None, description="Konzentration, z.B. 'EDP'"),
+    season: Optional[str] = Query(None, description="Saison, z.B. 'Winter' (matcht gegen seasons-Liste)"),
+    occasion: Optional[str] = Query(None, description="Anlass, z.B. 'Büro' (matcht gegen occasions-Liste)"),
+    favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
-    return user_fragrances(db, user.id)
+    fragrances = user_fragrances(db, user.id)
+
+    if brand is None and family is None and concentration is None and season is None and occasion is None and favorite is None:
+        return fragrances
+
+    result = []
+    for f in fragrances:
+        if brand is not None and not _icontains(f.get("brand", ""), brand):
+            continue
+        if family is not None and not (
+            _icontains(f.get("family", ""), family)
+            or _icontains(f.get("secondary_family", ""), family)
+        ):
+            continue
+        if concentration is not None and not _icontains(f.get("concentration", ""), concentration):
+            continue
+        if season is not None and not _list_icontains(f.get("seasons") or [], season):
+            continue
+        if occasion is not None and not _list_icontains(f.get("occasions") or [], occasion):
+            continue
+        if favorite is not None and bool(f.get("favorite")) != favorite:
+            continue
+        result.append(f)
+
+    return result
 
 
 # ── Accessoires ────────────────────────────────────────────────────────────────
@@ -139,7 +234,9 @@ def mcp_fragrances(
     "/accessories",
     summary="Accessoires abrufen",
     description=(
-        "Gibt alle Accessoires der Sammlung zurück. "
+        "Gibt Accessoires der Sammlung zurück. Alle Filter sind optional und "
+        "werden als case-insensitiver Substring-Match angewendet. "
+        "occasion matcht gegen die occasions-Liste. "
         "Felder: id, name, brand, type, model, material, color, stone, style, "
         "occasions, condition, details, purchase_price, current_value, "
         "favorite, needs_review, description, notes, created_at."
@@ -148,8 +245,32 @@ def mcp_fragrances(
 def mcp_accessories(
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
+    type: Optional[str] = Query(None, description="Typ, z.B. 'Ring' oder 'Sonnenbrille'"),
+    brand: Optional[str] = Query(None, description="Marke, z.B. 'Ray-Ban'"),
+    style: Optional[str] = Query(None, description="Stil, z.B. 'Casual'"),
+    occasion: Optional[str] = Query(None, description="Anlass, z.B. 'Alltag' (matcht gegen occasions-Liste)"),
+    favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
-    return user_accessories(db, user.id)
+    accessories = user_accessories(db, user.id)
+
+    if type is None and brand is None and style is None and occasion is None and favorite is None:
+        return accessories
+
+    result = []
+    for a in accessories:
+        if type is not None and not _icontains(a.get("type", ""), type):
+            continue
+        if brand is not None and not _icontains(a.get("brand", ""), brand):
+            continue
+        if style is not None and not _icontains(a.get("style", ""), style):
+            continue
+        if occasion is not None and not _list_icontains(a.get("occasions") or [], occasion):
+            continue
+        if favorite is not None and bool(a.get("favorite")) != favorite:
+            continue
+        result.append(a)
+
+    return result
 
 
 # ── Statistiken ────────────────────────────────────────────────────────────────
