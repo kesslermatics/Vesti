@@ -231,6 +231,7 @@ def _watch_dict(w: models.Watch) -> dict[str, Any]:
         "description": w.description,
         "notes": w.notes,
         "created_at": w.created_at,
+        "has_ai_image": bool(w.ai_image_data),
     }
 
 
@@ -266,6 +267,7 @@ def _fragrance_dict(f: models.Fragrance) -> dict[str, Any]:
         "description": f.description,
         "notes": f.notes,
         "created_at": f.created_at,
+        "has_ai_image": bool(f.ai_image_data),
     }
 
 
@@ -1371,6 +1373,7 @@ def _accessory_dict(a: models.Accessory) -> dict:
         "description": a.description,
         "notes": a.notes,
         "created_at": a.created_at,
+        "has_ai_image": bool(a.ai_image_data),
     }
 
 
