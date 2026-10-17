@@ -18,7 +18,7 @@ Endpoints:
 from collections import Counter
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -72,10 +72,13 @@ def _list_icontains(lst: list, query: str) -> bool:
         "Gibt Kleidungsstücke des Nutzers zurück. Alle Filter sind optional und "
         "werden als case-insensitiver Substring-Match angewendet. "
         "Felder: id, name, category, color, material, pattern, style, occasion, "
-        "season, description, details, quantity, brand, favorite, has_ai_image, created_at."
+        "season, description, details, quantity, brand, favorite, has_ai_image, "
+        "image_url, thumbnail_url, created_at. "
+        "image_url zeigt auf das KI-Produktfoto wenn vorhanden, sonst auf das Original."
     ),
 )
 def mcp_clothing(
+    request: Request,
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
     category: Optional[str] = Query(None, description="Kategorie, z.B. 'Oberteile'"),
@@ -86,6 +89,7 @@ def mcp_clothing(
     brand: Optional[str] = Query(None, description="Marke, z.B. 'Zara'"),
     favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
+    base = str(request.base_url).rstrip("/")
     items = db.scalars(
         select(models.ClothingItem)
         .where(models.ClothingItem.user_id == user.id)
@@ -109,6 +113,18 @@ def mcp_clothing(
         if favorite is not None and bool(it.favorite) != favorite:
             continue
 
+        has_ai = bool(it.has_ai_image)
+        image_url = (
+            f"{base}/api/items/{it.id}/ai-image"
+            if has_ai
+            else f"{base}/api/items/{it.id}/image"
+        )
+        thumbnail_url = (
+            f"{base}/api/items/{it.id}/ai-thumbnail"
+            if has_ai
+            else f"{base}/api/items/{it.id}/thumbnail"
+        )
+
         result.append({
             "id": it.id,
             "name": it.name,
@@ -124,7 +140,9 @@ def mcp_clothing(
             "quantity": it.quantity,
             "brand": it.brand,
             "favorite": bool(it.favorite),
-            "has_ai_image": bool(it.has_ai_image),
+            "has_ai_image": has_ai,
+            "image_url": image_url,
+            "thumbnail_url": thumbnail_url,
             "created_at": it.created_at,
         })
 
@@ -142,10 +160,12 @@ def mcp_clothing(
         "Felder: id, name, brand, model, reference, year, movement, case_material, "
         "case_diameter, dial_color, band_material, style, occasions, complications, "
         "condition, purchase_price, current_value, favorite, needs_review, "
-        "description, notes, created_at."
+        "description, notes, image_url, thumbnail_url, created_at. "
+        "image_url zeigt auf das KI-Produktfoto wenn vorhanden, sonst auf das Original."
     ),
 )
 def mcp_watches(
+    request: Request,
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
     brand: Optional[str] = Query(None, description="Marke, z.B. 'Rolex'"),
@@ -154,10 +174,8 @@ def mcp_watches(
     condition: Optional[str] = Query(None, description="Zustand, z.B. 'Sehr gut'"),
     favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
+    base = str(request.base_url).rstrip("/")
     watches = user_watches(db, user.id)
-
-    if brand is None and style is None and movement is None and condition is None and favorite is None:
-        return watches
 
     result = []
     for w in watches:
@@ -171,6 +189,10 @@ def mcp_watches(
             continue
         if favorite is not None and bool(w.get("favorite")) != favorite:
             continue
+        wid = w["id"]
+        has_ai = bool(w.get("has_ai_image"))
+        w["image_url"] = f"{base}/api/watches/{wid}/ai-image" if has_ai else f"{base}/api/watches/{wid}/image"
+        w["thumbnail_url"] = f"{base}/api/watches/{wid}/ai-thumbnail" if has_ai else f"{base}/api/watches/{wid}/thumbnail"
         result.append(w)
 
     return result
@@ -188,10 +210,12 @@ def mcp_watches(
         "Felder: id, name, brand, line, concentration, year, family, "
         "top_notes, heart_notes, base_notes, sillage, longevity, occasions, "
         "seasons, bottle_size, fill_level, quantity, purchase_price, "
-        "favorite, needs_review, description, notes, created_at."
+        "favorite, needs_review, description, notes, image_url, thumbnail_url, created_at. "
+        "image_url zeigt auf das KI-Produktfoto wenn vorhanden, sonst auf das Original."
     ),
 )
 def mcp_fragrances(
+    request: Request,
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
     brand: Optional[str] = Query(None, description="Marke, z.B. 'Dior'"),
@@ -201,10 +225,8 @@ def mcp_fragrances(
     occasion: Optional[str] = Query(None, description="Anlass, z.B. 'Büro' (matcht gegen occasions-Liste)"),
     favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
+    base = str(request.base_url).rstrip("/")
     fragrances = user_fragrances(db, user.id)
-
-    if brand is None and family is None and concentration is None and season is None and occasion is None and favorite is None:
-        return fragrances
 
     result = []
     for f in fragrances:
@@ -223,6 +245,10 @@ def mcp_fragrances(
             continue
         if favorite is not None and bool(f.get("favorite")) != favorite:
             continue
+        fid = f["id"]
+        has_ai = bool(f.get("has_ai_image"))
+        f["image_url"] = f"{base}/api/fragrances/{fid}/ai-image" if has_ai else f"{base}/api/fragrances/{fid}/image"
+        f["thumbnail_url"] = f"{base}/api/fragrances/{fid}/ai-thumbnail" if has_ai else f"{base}/api/fragrances/{fid}/thumbnail"
         result.append(f)
 
     return result
@@ -239,10 +265,12 @@ def mcp_fragrances(
         "occasion matcht gegen die occasions-Liste. "
         "Felder: id, name, brand, type, model, material, color, stone, style, "
         "occasions, condition, details, purchase_price, current_value, "
-        "favorite, needs_review, description, notes, created_at."
+        "favorite, needs_review, description, notes, image_url, thumbnail_url, created_at. "
+        "image_url zeigt auf das KI-Produktfoto wenn vorhanden, sonst auf das Original."
     ),
 )
 def mcp_accessories(
+    request: Request,
     db: Session = Depends(get_db),
     user: models.User = Depends(_api_key_user),
     type: Optional[str] = Query(None, description="Typ, z.B. 'Ring' oder 'Sonnenbrille'"),
@@ -251,10 +279,8 @@ def mcp_accessories(
     occasion: Optional[str] = Query(None, description="Anlass, z.B. 'Alltag' (matcht gegen occasions-Liste)"),
     favorite: Optional[bool] = Query(None, description="Nur Favoriten (true/false)"),
 ):
+    base = str(request.base_url).rstrip("/")
     accessories = user_accessories(db, user.id)
-
-    if type is None and brand is None and style is None and occasion is None and favorite is None:
-        return accessories
 
     result = []
     for a in accessories:
@@ -268,6 +294,10 @@ def mcp_accessories(
             continue
         if favorite is not None and bool(a.get("favorite")) != favorite:
             continue
+        aid = a["id"]
+        has_ai = bool(a.get("has_ai_image"))
+        a["image_url"] = f"{base}/api/accessories/{aid}/ai-image" if has_ai else f"{base}/api/accessories/{aid}/image"
+        a["thumbnail_url"] = f"{base}/api/accessories/{aid}/ai-thumbnail" if has_ai else f"{base}/api/accessories/{aid}/thumbnail"
         result.append(a)
 
     return result
