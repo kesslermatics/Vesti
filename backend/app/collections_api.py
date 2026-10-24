@@ -152,7 +152,7 @@ def _watch_out(request: Request, watch: models.Watch, wrist: float | None = None
     out.thumbnail_urls = [out.thumbnail_url] + [
         f"{base}/api/watch-images/{img.id}/thumbnail" for img in (watch.extra_images or [])
     ]
-    if watch.ai_image_data:
+    if watch.has_ai_image:
         out.has_ai_image = True
         out.ai_image_url = f"{base}/api/watches/{watch.id}/ai-image"
         out.ai_thumbnail_url = f"{base}/api/watches/{watch.id}/ai-thumbnail"
@@ -177,7 +177,7 @@ def _fragrance_out(request: Request, frag: models.Fragrance) -> FragranceOut:
     out.thumbnail_urls = [out.thumbnail_url] + [
         f"{base}/api/fragrance-images/{img.id}/thumbnail" for img in (frag.extra_images or [])
     ]
-    if frag.ai_image_data:
+    if frag.has_ai_image:
         out.has_ai_image = True
         out.ai_image_url = f"{base}/api/fragrances/{frag.id}/ai-image"
         out.ai_thumbnail_url = f"{base}/api/fragrances/{frag.id}/ai-thumbnail"
@@ -231,7 +231,7 @@ def _watch_dict(w: models.Watch) -> dict[str, Any]:
         "description": w.description,
         "notes": w.notes,
         "created_at": w.created_at,
-        "has_ai_image": bool(w.ai_image_data),
+        "has_ai_image": bool(w.has_ai_image),
     }
 
 
@@ -267,7 +267,7 @@ def _fragrance_dict(f: models.Fragrance) -> dict[str, Any]:
         "description": f.description,
         "notes": f.notes,
         "created_at": f.created_at,
-        "has_ai_image": bool(f.ai_image_data),
+        "has_ai_image": bool(f.has_ai_image),
     }
 
 
@@ -1343,7 +1343,7 @@ def _accessory_out(request: Request, acc: models.Accessory) -> AccessoryOut:
         f"{base}/api/accessory-images/{img.id}/thumbnail"
         for img in (acc.extra_images or [])
     ]
-    if acc.ai_image_data:
+    if acc.has_ai_image:
         out.has_ai_image = True
         out.ai_image_url = f"{base}/api/accessories/{acc.id}/ai-image"
         out.ai_thumbnail_url = f"{base}/api/accessories/{acc.id}/ai-thumbnail"
@@ -1373,7 +1373,7 @@ def _accessory_dict(a: models.Accessory) -> dict:
         "description": a.description,
         "notes": a.notes,
         "created_at": a.created_at,
-        "has_ai_image": bool(a.ai_image_data),
+        "has_ai_image": bool(a.has_ai_image),
     }
 
 

@@ -11,7 +11,7 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.engine import Engine
 
 logger = logging.getLogger("vesti.migrations")
-logger.setLevel(logging.INFO)  # sichtbar in Railway auch ohne extra Log-Config
+logger.setLevel(logging.INFO)  # sichtbar in den Container-Logs auch ohne extra Log-Config
 
 # Erwartete Spalten pro Tabelle:
 # (Spaltenname, Postgres-Typ, SQLite-Typ, Default-Ausdruck oder None, nullable)

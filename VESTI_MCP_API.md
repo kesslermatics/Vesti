@@ -3,7 +3,7 @@
 Read-only API für die Einbindung deiner Vesti-Garderobe in externe KI-Tools
 (Claude, ChatGPT, Custom GPTs, etc.).
 
-**Base URL:** `https://backend-production-66df.up.railway.app`
+**Base URL:** `https://vesti.kesslermatics.com`
 
 ---
 
@@ -282,7 +282,7 @@ Um die Vesti-API in Claude zu nutzen, füge folgendes in die **Custom Instructio
 
 ```
 Du hast Zugriff auf meine Vesti-Garderobe über diese API:
-Base URL: https://backend-production-66df.up.railway.app
+Base URL: https://vesti.kesslermatics.com
 Auth-Header: X-API-Key: <dein-api-key>
 
 Endpoints:
@@ -309,7 +309,7 @@ Füge in deine `mcp.json` / `claude_desktop_config.json` einen HTTP-MCP-Server e
       "command": "npx",
       "args": [
         "mcp-remote",
-        "https://backend-production-66df.up.railway.app/mcp",
+        "https://vesti.kesslermatics.com/mcp",
         "--header",
         "X-API-Key: <dein-api-key>"
       ]

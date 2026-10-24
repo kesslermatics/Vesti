@@ -4,9 +4,10 @@ from PIL import Image
 from io import BytesIO
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy import Float
-from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, deferred, mapped_column, relationship
 
 from .database import Base
+from .storage import S3Blob, register_cleanup
 
 
 def _now() -> datetime:
@@ -147,15 +148,15 @@ class ClothingItem(Base):
 
     # Bild direkt in der DB gespeichert – deferred: wird nur bei explizitem Zugriff geladen,
     # nicht bei Listenabfragen. Verhindert massiven RAM-Verbrauch bei großen Garderoben.
-    image_data: Mapped[bytes] = deferred(mapped_column(LargeBinary))
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("clothing")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
     # Thumbnail für schnelleres Laden in Übersichten
-    thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(S3Blob("clothing"), nullable=True))
 
     # KI-generiertes Produktfoto (optional) + dessen Thumbnail
-    ai_image_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    ai_image_data: Mapped[bytes | None] = deferred(mapped_column(S3Blob("clothing"), nullable=True))
     ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
-    ai_thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    ai_thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(S3Blob("clothing"), nullable=True))
     # Boolean-Flag: wurde ein KI-Produktfoto generiert? Vermeidet Blob-Zugriff in Listenabfragen.
     has_ai_image: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -181,10 +182,10 @@ class ItemImage(Base):
         ForeignKey("clothing_items.id", ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    image_data: Mapped[bytes] = deferred(mapped_column(LargeBinary))
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("clothing")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
     # Thumbnail für schnelleres Laden
-    thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    thumbnail_data: Mapped[bytes | None] = deferred(mapped_column(S3Blob("clothing"), nullable=True))
 
     item: Mapped["ClothingItem"] = relationship(back_populates="extra_images")
 
@@ -252,12 +253,12 @@ class Watch(Base):
     needs_review: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # --- Bilder ---
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("watches")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
-    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("watches"), nullable=True))
+    ai_image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("watches"), nullable=True))
     ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
-    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("watches"), nullable=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -279,9 +280,9 @@ class WatchImage(Base):
         ForeignKey("watches.id", ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("watches")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("watches"), nullable=True))
 
     watch: Mapped["Watch"] = relationship(back_populates="extra_images")
 
@@ -337,12 +338,12 @@ class Fragrance(Base):
     needs_review: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # --- Bilder ---
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("fragrances")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
-    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("fragrances"), nullable=True))
+    ai_image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("fragrances"), nullable=True))
     ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
-    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("fragrances"), nullable=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -364,9 +365,9 @@ class FragranceImage(Base):
         ForeignKey("fragrances.id", ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("fragrances")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("fragrances"), nullable=True))
 
     fragrance: Mapped["Fragrance"] = relationship(back_populates="extra_images")
 
@@ -424,12 +425,12 @@ class Accessory(Base):
     needs_review: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # --- Bilder ---
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("accessories")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
-    ai_image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("accessories"), nullable=True))
+    ai_image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("accessories"), nullable=True))
     ai_image_mime: Mapped[str] = mapped_column(String(60), default="image/png")
-    ai_thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    ai_thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("accessories"), nullable=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
@@ -451,9 +452,9 @@ class AccessoryImage(Base):
         ForeignKey("accessories.id", ondelete="CASCADE"), index=True
     )
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    image_data: Mapped[bytes] = mapped_column(LargeBinary)
+    image_data: Mapped[bytes] = deferred(mapped_column(S3Blob("accessories")))
     image_mime: Mapped[str] = mapped_column(String(60), default="image/jpeg")
-    thumbnail_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+    thumbnail_data: Mapped[bytes] = deferred(mapped_column(S3Blob("accessories"), nullable=True))
 
     accessory: Mapped["Accessory"] = relationship(back_populates="extra_images")
 
@@ -509,4 +510,24 @@ User.saved_outfits = relationship(  # type: ignore[attr-defined]
     back_populates="owner",
     cascade="all, delete-orphan",
     order_by="SavedOutfit.created_at.desc()",
+)
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  S3-Bildspeicher: Hilfsattribute und Aufräumen
+# ══════════════════════════════════════════════════════════════════════
+
+# Boolean-Flag "hat KI-Produktfoto" für Uhren/Düfte/Accessoires – rein SQL
+# (IS NOT NULL), damit Listen keinen Bild-Download aus S3 auslösen.
+for _cls in (Watch, Fragrance, Accessory):
+    _cls.has_ai_image = column_property(_cls.ai_image_data.isnot(None))  # type: ignore[attr-defined]
+
+# Löscht S3-Objekte, wenn Zeilen gelöscht oder Bilder ersetzt werden.
+register_cleanup(
+    [
+        ClothingItem, ItemImage,
+        Watch, WatchImage,
+        Fragrance, FragranceImage,
+        Accessory, AccessoryImage,
+    ]
 )

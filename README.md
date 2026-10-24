@@ -15,7 +15,7 @@ Neben der Kleidung verwaltet Vesti zwei weitere Sammlungen: **Uhren** und **Düf
 
 ## Datenhaltung
 
-Alle Daten liegen in der Postgres-Datenbank – auch die **Bilder** selbst (als Binärdaten in der Tabelle `clothing_items`). Es gibt keinen Dateisystem-Speicher, dadurch ist das Backend auf Railway zustandslos und Bilder gehen bei einem Redeploy nicht verloren. Jedes Kleidungsstück gehört genau einem Nutzer (`user_id`), die Garderoben sind vollständig voneinander getrennt.
+Die Daten liegen in der Postgres-Datenbank, die **Bilder** in einem S3-kompatiblen Bucket (Ordner `Vesti/`, siehe Deployment). Es gibt keinen Dateisystem-Speicher, dadurch ist das Backend zustandslos und Bilder gehen bei einem Redeploy nicht verloren. Jedes Kleidungsstück gehört genau einem Nutzer (`user_id`), die Garderoben sind vollständig voneinander getrennt.
 
 ## Nutzer-Management
 
@@ -114,33 +114,52 @@ Läuft auf `http://localhost:5173`.
 
 Standardmäßig wird `gemini-3.5-flash-lite` (multimodal) verwendet. Das Modell ist über die Env-Variable `GEMINI_MODEL` frei wählbar, z. B. `gemini-3.6-flash` für höhere Qualität.
 
-## Deployment auf Railway
+## Deployment auf Dokploy (Docker)
 
-Beide Ordner werden als **separate Services** deployt.
+Vesti läuft als Dokploy-Projekt **Vesti** mit drei Services. Backend und Frontend werden per Dockerfile aus diesem Repo gebaut (GitHub, Branch `main`, Auto-Deploy).
 
-### Backend-Service
+| Service | Typ | Build-Pfad | Domain |
+|---------|-----|-----------|--------|
+| Database | Postgres 17 | – | nur intern |
+| Backend | Application (Dockerfile) | `/backend` | `vesti.kesslermatics.com` Pfade `/api` und `/mcp` (Port 8000) |
+| Frontend | Application (Dockerfile, nginx) | `/frontend` | `vesti.kesslermatics.com` Pfad `/` (Port 80) |
 
-1. Neues Service aus dem `backend/`-Ordner (Root Directory = `backend`).
-2. Railway erkennt Python via Nixpacks. Start-Command steht in `railway.json`.
-3. Umgebungsvariablen setzen:
-   - `GEMINI_API_KEY` – dein API-Key
-   - `GEMINI_MODEL` – optional, Standard `gemini-3.5-flash-lite`
-   - `DATABASE_URL` – Postgres-URL (Railway-Postgres-Plugin setzt sie automatisch)
-   - `JWT_SECRET` – langes zufälliges Secret (`python -c "import secrets; print(secrets.token_urlsafe(48))"`)
-   - `CORS_ORIGINS` – die öffentliche URL des Frontend-Service
-4. Public Domain generieren.
+Frontend und Backend liegen hinter derselben Domain; Traefik routet `/api` und `/mcp` zum Backend, alles andere zum Frontend. Pfade werden **nicht** gestrippt (`stripPath = false`), da die Routen im Backend bereits mit `/api` bzw. `/mcp` beginnen.
 
-> Bilder werden in der Datenbank gespeichert, nicht im Dateisystem. Damit ist kein Volume nötig und ein Redeploy verliert keine Daten.
+### Backend-Umgebungsvariablen
 
-### Frontend-Service
+Siehe `backend/.env.example`. Wichtig:
 
-1. Neues Service aus dem `frontend/`-Ordner (Root Directory = `frontend`).
-2. Build & Start stehen in `railway.json` (`npm run build` → `npm run preview`).
-3. Umgebungsvariable setzen:
-   - `VITE_API_URL` – die öffentliche URL des Backend-Service (muss zur Build-Zeit gesetzt sein).
-4. Public Domain generieren.
+- `DATABASE_URL` – interne URL der Dokploy-Postgres (`postgresql://user:pass@<appName>:5432/db`)
+- `OPENROUTER_API_KEY`, `MODEL`, `IMAGE_MODEL` – KI-Zugriff
+- `JWT_SECRET` – langes zufälliges Secret. Den bisherigen Wert beibehalten, sonst müssen sich alle Nutzer neu anmelden.
+- `CORS_ORIGINS` – `https://vesti.kesslermatics.com`
+- `S3_*` – Bildspeicher (siehe unten)
 
-Nach dem Deploy `CORS_ORIGINS` im Backend auf die Frontend-Domain aktualisieren.
+### Frontend-Build-Argument
+
+`VITE_API_URL=https://vesti.kesslermatics.com` muss unter **Build Args** gesetzt werden, weil Vite den Wert zur Build-Zeit einbettet.
+
+### Bildspeicher (S3 / Cloudflare R2)
+
+Alle Bilder (Original, Thumbnail, KI-Produktfoto und Zusatzbilder) liegen in einem S3-kompatiblen Bucket im Ordner `Vesti/` (Unterordner `clothing/`, `watches/`, `fragrances/`, `accessories/`). In der Datenbank steht pro Bild nur ein kurzer Marker `s3:<key>`; das Backend löst ihn beim Lesen transparent auf (`backend/app/storage.py`). Beim Löschen oder Ersetzen eines Bildes wird das S3-Objekt nach dem Commit entfernt.
+
+Variablen: `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_REGION`, `S3_KEY_PREFIX` (Standard `Vesti/`), `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`. Sind sie nicht gesetzt, werden Bilder wie früher direkt in der DB gespeichert.
+
+Bereits in der DB liegende Bilder werden einmalig nach S3 verschoben (idempotent, jederzeit wiederholbar):
+
+```bash
+cd backend
+python migrate_images_to_s3.py --dry-run   # nur zählen
+python migrate_images_to_s3.py
+```
+
+### Datenbank-Migration von einer anderen Postgres
+
+```bash
+pg_dump --no-owner --no-acl -Fc "$ALTE_DB_URL" -f vesti.dump
+pg_restore --no-owner --no-acl --clean --if-exists -d "$NEUE_DB_URL" vesti.dump
+```
 
 ## API-Überblick
 

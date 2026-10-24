@@ -203,7 +203,7 @@ def _to_recommended_watch(
         thumbnail_url=f"{base}/api/watches/{watch.id}/thumbnail",
         reason=reason,
     )
-    if watch.ai_image_data:
+    if watch.has_ai_image:
         out.has_ai_image = True
         out.ai_image_url = f"{base}/api/watches/{watch.id}/ai-image"
         out.ai_thumbnail_url = f"{base}/api/watches/{watch.id}/ai-thumbnail"
@@ -233,7 +233,7 @@ def _to_recommended_fragrance(
         thumbnail_url=f"{base}/api/fragrances/{frag.id}/thumbnail",
         reason=reason,
     )
-    if frag.ai_image_data:
+    if frag.has_ai_image:
         out.has_ai_image = True
         out.ai_image_url = f"{base}/api/fragrances/{frag.id}/ai-image"
         out.ai_thumbnail_url = f"{base}/api/fragrances/{frag.id}/ai-thumbnail"
@@ -263,7 +263,7 @@ def _to_recommended_accessory(
         thumbnail_url=f"{base}/api/accessories/{acc.id}/thumbnail",
         reason=reason,
     )
-    if acc.ai_image_data:
+    if acc.has_ai_image:
         out.has_ai_image = True
         out.ai_image_url = f"{base}/api/accessories/{acc.id}/ai-image"
         out.ai_thumbnail_url = f"{base}/api/accessories/{acc.id}/ai-thumbnail"

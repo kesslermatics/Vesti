@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 30  # 30 Tage
 
+    # S3-kompatibler Bildspeicher (z. B. Cloudflare R2). Ohne Bucket/Keys
+    # werden Bilder wie bisher als Binaerdaten in der DB gespeichert.
+    s3_endpoint_url: str = ""
+    s3_bucket: str = ""
+    s3_region: str = "auto"
+    s3_key_prefix: str = "Vesti/"
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+
     # CORS: kommagetrennte Liste erlaubter Origins ("*" fuer alle)
     cors_origins: str = "*"
 

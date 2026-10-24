@@ -5,7 +5,7 @@ from .config import get_settings
 
 settings = get_settings()
 
-# Railway liefert Postgres-URLs teils als "postgres://" -> SQLAlchemy braucht "postgresql://"
+# Manche Anbieter liefern Postgres-URLs teils als "postgres://" -> SQLAlchemy braucht "postgresql://"
 db_url = settings.database_url
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)

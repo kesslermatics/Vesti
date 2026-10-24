@@ -45,7 +45,7 @@ def _resolve_watch(db: Session, watch_id: int | None, request: Request) -> dict[
     if not w:
         return None
     base = api_base(request)
-    has_ai = bool(w.ai_image_data)
+    has_ai = bool(w.has_ai_image)
     return {
         "id": w.id,
         "name": w.name or f"{w.brand} {w.model}".strip(),
@@ -64,7 +64,7 @@ def _resolve_fragrance(db: Session, frag_id: int | None, request: Request) -> di
     if not f:
         return None
     base = api_base(request)
-    has_ai = bool(f.ai_image_data)
+    has_ai = bool(f.has_ai_image)
     return {
         "id": f.id,
         "name": f.name,
@@ -82,7 +82,7 @@ def _resolve_accessory(db: Session, acc_id: int | None, request: Request) -> dic
     if not a:
         return None
     base = api_base(request)
-    has_ai = bool(a.ai_image_data)
+    has_ai = bool(a.has_ai_image)
     return {
         "id": a.id,
         "name": a.name or a.type,

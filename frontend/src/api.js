@@ -1,5 +1,6 @@
-// Backend-URL (Railway). Direkt im Code, damit kein .env noetig ist.
-const BASE = "https://backend-production-66df.up.railway.app";
+// Backend-URL: wird zur Build-Zeit per VITE_API_URL gesetzt (Dokploy Build Arg).
+// Leer = gleiche Origin (Frontend und Backend liegen hinter derselben Domain).
+const BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 
 const TOKEN_KEY = "vesti_token";
 
